@@ -8,6 +8,9 @@ import (
 	"os"
 	"strings"
 	"unicode"
+
+	"github.com/stefanistkuhl/ermokie/pkg/games"
+	"github.com/stefanistkuhl/ermokie/pkg/games/categories"
 )
 
 func LoadProfiles(fileName string) (Profiles, error) {
@@ -70,10 +73,25 @@ func ImportProfiles(db *sql.DB, profiles Profiles) error {
 	}()
 
 	for _, profile := range profiles.ProfileList.Profiles {
+		cat := games.NewCatalog()
+		catCatalog := categories.NewCatalog()
+		g, ok := games.ParseProfileGame(cat, profile.Name)
+		var gameDB any
+		if ok {
+			gameDB = g.Name
+		} else {
+			gameDB = nil
+		}
+		c, ok := categories.ParseProfileCategory(catCatalog, profile.Name)
+		var categoryDB any
+		if ok {
+			categoryDB = c.Name
+		} else {
+			categoryDB = nil
+		}
 		res, err := tx.Exec(
-			"INSERT INTO runs (name, attempts, active_split) VALUES (?, ?, ?)",
-			profile.Name, profile.Attempts, profile.ActiveSplit,
-		)
+			"INSERT INTO runs (name, attempts, active_split, game, category) VALUES (?, ?, ?, ?, ?)",
+			profile.Name, profile.Attempts, profile.ActiveSplit, gameDB, categoryDB)
 		if err != nil {
 			return err
 		}

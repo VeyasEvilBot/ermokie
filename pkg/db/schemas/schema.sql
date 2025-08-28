@@ -1,16 +1,88 @@
-create table if not exists runs(
-	id integer primary key autoincrement,
-	name text not null,
-	attempts integer default 0,
-	active_split ingeger default 0
+create table if not exists runs (
+  id integer primary key autoincrement,
+  name text not null,
+  attempts integer default 0,
+  active_split integer default 0,
+  game text
+    check (
+      game is null or game in (
+        "Demon's Souls",
+        "Dark Souls 1",
+        "Dark Souls 2",
+        "Dark Souls 3",
+        "Bloodborne",
+        "Sekiro",
+        "Elden Ring",
+        "Marathon Slop",
+        "Resident Evil 0",
+        "Resident Evil",
+        "Resident Evil 2",
+        "Resident Evil 3",
+        "Resident Evil 4",
+        "Resident Evil 7",
+        "Resident Evil 8",
+        "Resident Evil Spinoffs",
+        "Hades",
+        "Cuphead",
+        "Hollow Knight",
+        "Hollow Knight: Silksong",
+        "Celeste",
+        "Crash Bandicoot",
+        "Crash Bandicoot 2: Cortex Strikes Back",
+        "Crash Bandicoot 3: Warped",
+        "Crash Bandicoot 4: It’s About Time",
+        "Ocarina of Time",
+        "Majora's Mask",
+        "Breath of the Wild",
+        "Tears of the Kingdom",
+        "Blasphemous",
+        "Blasphemous 2",
+        "Silent Hill",
+        "Silent Hill 2 Remake",
+        "Silent Hill 2 Classic",
+        "Silent Hill 3",
+        "Silent Hill 4",
+        "Silent Hill Origins",
+        "Dishonored",
+        "Dishonored 2",
+        "Dishonored: Death of the Outsider",
+        "Tormented Souls",
+        "Lies of P",
+        "Oblivion Classic",
+        "Oblivion Remastered",
+        "Skyrim",
+        "Minecraft",
+        "Arkham Asylum",
+        "Arkham Origins",
+        "Arkham Knight",
+        "Dead Cells",
+        "Fallout 3",
+        "Fallout: New Vegas",
+        "Fallout 4",
+        "The Binding of Isaac",
+        "Ori and the Blind Forest",
+        "Ori and the Will of the Wisps",
+        "Clair Obscur: Expedition 33",
+        "Thymesia",
+        "Super Mario 64",
+        "Super Mario Odyssey"
+      )
+    ),
+  category text
+    check (
+      category is null or category in ("Any%", "All Bosses", "All Achievements")
+    )
 );
 
-create table if not exists splits(
-	id integer primary key autoincrement,
-	run_id integer not null,
-	name text not null,
-	hit_count integer default 0,
-	pb_hit_count integer default 0,
-	idx integer not null,
-	foreign key (run_id) references runs(id) on delete cascade
+create table if not exists splits (
+  id integer primary key autoincrement,
+  run_id integer not null,
+  name text not null,
+  hit_count integer default 0,
+  pb_hit_count integer default 0,
+  idx integer not null,
+  save_file text default '',
+  foreign key (run_id) references runs(id) on delete cascade
 );
+
+create index if not exists idx_splits_run_id_idx on splits(run_id, idx);

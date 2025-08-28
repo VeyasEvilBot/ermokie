@@ -45,7 +45,7 @@ func CheckEmpty(db *sql.DB) bool {
 }
 
 func GetAllRuns(db *sql.DB) ([]Run, error) {
-	rows, err := db.Query("SELECT id, name FROM runs")
+	rows, err := db.Query("SELECT id, name, game, category, attempts FROM runs")
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +54,7 @@ func GetAllRuns(db *sql.DB) ([]Run, error) {
 	var runs []Run
 	for rows.Next() {
 		var r Run
-		if err := rows.Scan(&r.ID, &r.Name); err != nil {
+		if err := rows.Scan(&r.ID, &r.Name, &r.Game, &r.Category, &r.Attempts); err != nil {
 			return nil, err
 		}
 		runs = append(runs, r)

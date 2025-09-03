@@ -1,19 +1,26 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	_ "embed"
+	"fmt"
 	"log"
-	"strings"
+	"path/filepath"
 
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/stefanistkuhl/ermokie/pkg/config"
 )
 
 //go:embed schemas/schema.sql
 var Schema string
 
 func Init() *sql.DB {
-	db, err := sql.Open("sqlite3", "app.db")
+	dataDir := config.GetDataDir()
+	dbPath := filepath.Join(dataDir, "app.db")
+	dsn := fmt.Sprintf("file:%s?_foreign_keys=on&_busy_timeout=5000&_journal_mode=WAL", dbPath)
+
+	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		log.Fatal("Failed to open database:", err)
 	}
@@ -22,16 +29,25 @@ func Init() *sql.DB {
 		log.Fatal("DB connection failed:", err)
 	}
 
-	for stmt := range strings.SplitSeq(Schema, ";") {
-		stmt = strings.TrimSpace(stmt)
-		if stmt == "" {
-			continue
-		}
-		_, err := db.Exec(stmt)
-		if err != nil {
-			log.Fatalf("Error executing statement %q: %s", stmt, err)
-		}
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		log.Fatal("begin tx:", err)
 	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, "PRAGMA foreign_keys = ON;"); err != nil {
+		log.Fatal("enable foreign_keys:", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, Schema); err != nil {
+		log.Fatalf("apply schema failed: %v", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Fatal("commit schema:", err)
+	}
+
 	return db
 }
 
@@ -44,21 +60,26 @@ func CheckEmpty(db *sql.DB) bool {
 	return count == 0
 }
 
-func GetAllRuns(db *sql.DB) ([]Run, error) {
-	rows, err := db.Query("SELECT id, name, game, category, attempts FROM runs")
+func QueryRows[T any](
+	db *sql.DB,
+	query string,
+	scanFn func(*sql.Rows) (T, error),
+	args ...any,
+) ([]T, error) {
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var runs []Run
+	var results []T
 	for rows.Next() {
-		var r Run
-		if err := rows.Scan(&r.ID, &r.Name, &r.Game, &r.Category, &r.Attempts); err != nil {
+		item, err := scanFn(rows)
+		if err != nil {
 			return nil, err
 		}
-		runs = append(runs, r)
+		results = append(results, item)
 	}
 
-	return runs, rows.Err()
+	return results, rows.Err()
 }

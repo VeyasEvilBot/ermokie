@@ -70,7 +70,7 @@ create table if not exists runs (
     ),
   category text
     check (
-      category is null or category in ("Any%", "All Bosses", "All Achievements")
+      category is null or category in ("Any%", "All Bosses", "All Achievements", "All Great Runes")
     )
 );
 
@@ -81,8 +81,51 @@ create table if not exists splits (
   hit_count integer default 0,
   pb_hit_count integer default 0,
   idx integer not null,
-  save_file text default '',
+  save_file text default null,
   foreign key (run_id) references runs(id) on delete cascade
 );
 
-create index if not exists idx_splits_run_id_idx on splits(run_id, idx);
+create unique index if not exists idx_splits_run_id_idx
+  on splits(run_id, idx);
+
+drop trigger if exists shift_splits_idx_before_insert;
+create trigger shift_splits_idx_before_insert
+before insert on splits
+for each row
+begin
+  update splits
+  set idx = idx + 1
+  where run_id = NEW.run_id
+    and idx >= NEW.idx;
+end;
+
+drop trigger if exists shift_splits_idx_after_delete;
+create trigger shift_splits_idx_after_delete
+after delete on splits
+for each row
+begin
+  update splits
+  set idx = idx - 1
+  where run_id = OLD.run_id
+    and idx > OLD.idx;
+end;
+
+drop trigger if exists reorder_splits_idx_after_update;
+create trigger reorder_splits_idx_after_update
+after update of idx on splits
+for each row
+when NEW.run_id = OLD.run_id and NEW.idx != OLD.idx
+begin
+  update splits
+  set idx = idx - 1
+  where run_id = NEW.run_id
+    and idx > OLD.idx
+    and idx <= NEW.idx;
+
+  update splits
+  set idx = idx + 1
+  where run_id = NEW.run_id
+    and idx >= NEW.idx
+    and idx < OLD.idx;
+
+end;

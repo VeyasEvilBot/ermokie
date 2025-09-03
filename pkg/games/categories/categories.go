@@ -21,6 +21,7 @@ func NewCatalog() *Catalog {
 		All: []Category{
 			{ID: "AnyPercent", Name: "Any%", ShortForms: []string{"any", "any%", "any percent"}},
 			{ID: "AllBosses", Name: "All Bosses", ShortForms: []string{"allbosses", "ab"}},
+			{ID: "AllGreatRunes", Name: "All Great Runes", ShortForms: []string{"allgreatrunes", "agr"}},
 			{ID: "AllAchievements", Name: "All Achievements", ShortForms: []string{
 				"alla", "achievements", "all cheevos", "cheevos", "100%",
 			}},

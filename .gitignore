@@ -31,6 +31,8 @@ go.work.sum
 .idea/
 .vscode/
 
-*.db
+*.db*
 *.xml
 ermokie
+
+cmd/CLI_STRUCTURE.md

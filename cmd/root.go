@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stefanistkuhl/ermokie/pkg/config"
 	"github.com/stefanistkuhl/ermokie/pkg/db"
+	"github.com/stefanistkuhl/ermokie/pkg/db/fetching"
 	hcmmigration "github.com/stefanistkuhl/ermokie/pkg/hcmMigration"
 	"github.com/stefanistkuhl/ermokie/pkg/models"
 	"github.com/stefanistkuhl/ermokie/pkg/models/setup"
@@ -17,15 +18,17 @@ import (
 	"github.com/stefanistkuhl/ermokie/pkg/presets"
 )
 
+var launchSetup bool = false
+
 var rootCmd = &cobra.Command{
 	Use:   "ermokie",
 	Short: "",
 	Long:  ``,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		fmt.Println(launchSetup)
 		cfg, err := config.LoadConfig()
-		if err != nil {
-			// Handle any config loading error (missing file, empty file, corrupted file, etc.)
-			fmt.Println("Config not found or invalid, starting setup...")
+		if err != nil || launchSetup {
+			// fmt.Println("Config not found or invalid, starting setup...")
 			themeManager := setup.NewThemeManager()
 			availableThemes := themeManager.GetAvailableThemes()
 			cfg = config.NewConfig()
@@ -95,7 +98,23 @@ var rootCmd = &cobra.Command{
 
 							}
 						}
-						// call some shit to import into db kakaw
+
+						data := db.Init()
+						cat := presets.NewPresets()
+						var runs []fetching.RunCreate
+						for _, preset := range toImport {
+							run, ok := presets.PresetToRunType(preset, cat)
+							if !ok {
+
+							}
+							runs = append(runs, run)
+						}
+
+						err := presets.ImportPresets(data, runs)
+						if err != nil {
+							log.Fatal(err)
+						}
+
 						return tea.Batch(
 							tea.ClearScreen,
 							tea.EnterAltScreen,
@@ -135,6 +154,10 @@ var rootCmd = &cobra.Command{
 		fmt.Println(cfg)
 		return nil
 	},
+}
+
+func init() {
+	rootCmd.Flags().BoolVar(&launchSetup, "setup", false, "Run the setup")
 }
 
 func loadDefaultsAndSave(cfg config.Config) error {

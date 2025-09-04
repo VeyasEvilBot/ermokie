@@ -20,9 +20,9 @@ func NewPresets() []Preset {
 		{Game: "Elden Ring", Category: "Any%", Name: "Iron Balls", Splits: []string{"Torrenting", "DTS", "Patches", "Bernahl/Manor", "Margit", "Godrick", "Radahn", "Goldfrey", "Morgott", "Fire Giant", "Godskin Dou", "Maliketh", "Gideon", "Horah Loux", "Radabeast"}},
 		{Game: "Elden Ring", Category: "All Great Runes", Name: "Star Fist", Splits: []string{"Setup", "Noble", "Rykard", "Margit", "Godrick", "DTS", "Goldfrey", "Guardian Golem", "Morgott", "Fire Giant", "Godskin Dou", "Maliketh", "Gideon", "Horah Loux", "Niall", "Loretta", "Melanie", "Mohg", "Red Wolf", "Rennala", "Radabeast"}},
 		// Trash souls 1 presets
-		{Game: "Dark Souls Remastered", Category: "Any%", Name: "Crystal Halberd", Splits: []string{"Asylum Demon", "Gargoyles", "Quelaag", "Ceaseless", "Iron Golem", "Ornstein & Smough", "Pinwheel", "Sif", "Seath", "Nito", "Bed of Chaos", "Four Kings", "Gwyn"}},
-		{Game: "Dark Souls Remastered", Category: "All Main Game Bosses", Name: "Crystal Halberd/Blacksmith Giant Hammer", Splits: []string{"Asylum Demon", "Gargoyles", "Quelaag", "Ceaseless", "Iron Golem", "Ornstein & Smough", "Pinwheel", "Stray Demon", "Butterfly", "Sif", "Taurus Demon", "Capra Demon", "Gaping Dragon", "Seath", "Demon Firesage", "Centipede Demon", "Bed of Chaos", "Four Kings", "Nito", "Gwyndolin", "Priscilla", "Gwyn"}},
-		{Game: "Dark Souls Remastered", Category: "All Bosses", Name: "Hybrid", Splits: []string{"Asylum Demon", "Gargoyles", "Quelaag", "Iron Golem", "Ornstein & Smough", "Pinwheel", "Stray Demon", "Seath", "Sanctuary Guardian", "Artorias", "Manus", "Gwyndolin", "Priscilla", "Ceaseless", "Demon Firesage", "Centipede Demon", "Bed of Chaos", "Sif", "Butterfly", "Taurus Demon", "Capra Demon", "Gaping Dragon", "Four Kings", "Nito", "Kalameet", "Gwyn"}},
+		{Game: "Dark Souls 1", Category: "Any%", Name: "Crystal Halberd", Splits: []string{"Asylum Demon", "Gargoyles", "Quelaag", "Ceaseless", "Iron Golem", "Ornstein & Smough", "Pinwheel", "Sif", "Seath", "Nito", "Bed of Chaos", "Four Kings", "Gwyn"}},
+		{Game: "Dark Souls 1", Category: "All Main Game Bosses", Name: "Crystal Halberd/Blacksmith Giant Hammer", Splits: []string{"Asylum Demon", "Gargoyles", "Quelaag", "Ceaseless", "Iron Golem", "Ornstein & Smough", "Pinwheel", "Stray Demon", "Butterfly", "Sif", "Taurus Demon", "Capra Demon", "Gaping Dragon", "Seath", "Demon Firesage", "Centipede Demon", "Bed of Chaos", "Four Kings", "Nito", "Gwyndolin", "Priscilla", "Gwyn"}},
+		{Game: "Dark Souls 1", Category: "All Bosses", Name: "Hybrid", Splits: []string{"Asylum Demon", "Gargoyles", "Quelaag", "Iron Golem", "Ornstein & Smough", "Pinwheel", "Stray Demon", "Seath", "Sanctuary Guardian", "Artorias", "Manus", "Gwyndolin", "Priscilla", "Ceaseless", "Demon Firesage", "Centipede Demon", "Bed of Chaos", "Sif", "Butterfly", "Taurus Demon", "Capra Demon", "Gaping Dragon", "Four Kings", "Nito", "Kalameet", "Gwyn"}},
 	}
 	return p
 }
@@ -72,12 +72,13 @@ func GetPresetByName(runName string) Preset {
 	return p
 }
 
-func presetToRunType(runName string) (fetching.RunCreate, bool) {
+func PresetToRunType(toImport Preset, presets []Preset) (fetching.RunCreate, bool) {
 	var run fetching.RunCreate
-	presets := NewPresets()
 	for _, preset := range presets {
-		if fmt.Sprintf("%s %s %s", preset.Game, preset.Category, preset.Name) == runName {
-			run.Name = runName
+		if preset.Game == toImport.Game &&
+			preset.Category == toImport.Category &&
+			preset.Name == toImport.Name {
+			run.Name = preset.Game + " " + preset.Category + " " + preset.Name
 			run.Game = sql.NullString{String: preset.Game, Valid: true}
 			run.Category = sql.NullString{String: preset.Category, Valid: true}
 			run.Attempts = 0
@@ -89,7 +90,6 @@ func presetToRunType(runName string) (fetching.RunCreate, bool) {
 				splitCreate.PBHits = 0
 				splitCreate.Idx = i
 				splitCreate.SaveFile = sql.NullString{String: "", Valid: false}
-				splitCreate.IsActive = false
 				run.Splits = append(run.Splits, splitCreate)
 
 			}
@@ -99,7 +99,42 @@ func presetToRunType(runName string) (fetching.RunCreate, bool) {
 	return run, false
 }
 
-func ImportPreset(data *sql.DB, runs []fetching.RunCreate) error {
+func ImportPresets(db *sql.DB, runs []fetching.RunCreate) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	for _, run := range runs {
+		res, err := tx.Exec(
+			"INSERT INTO runs (name, attempts, active_split, game, category) VALUES (?, ?, ?, ?, ?)",
+			run.Name, run.Attempts, run.ActiveSplit, run.Game, run.Category)
+		if err != nil {
+			return err
+		}
+
+		runID, _ := res.LastInsertId()
+
+		for idx, split := range run.Splits {
+			_, err := tx.Exec(
+				"INSERT INTO splits (run_id, name, hit_count, pb_hit_count, idx, save_file) VALUES (?, ?, ?, ?, ?, ?)",
+				runID, split.Name, split.Hits, split.PBHits, idx+1, split.SaveFile,
+			)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
 
 	return nil
 }

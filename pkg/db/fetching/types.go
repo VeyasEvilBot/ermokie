@@ -42,5 +42,4 @@ type SplitCreate struct {
 	PBHits   int
 	Idx      int
 	SaveFile sql.NullString
-	IsActive bool
 }

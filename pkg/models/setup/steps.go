@@ -11,6 +11,7 @@ const (
 	StepAsk StepKind = iota
 	StepList
 	StepInput
+	StepHelp
 )
 
 type StepSpec struct {

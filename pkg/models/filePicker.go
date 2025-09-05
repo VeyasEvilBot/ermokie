@@ -50,8 +50,7 @@ func (f filePicker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		f.height = msg.Height
 		return f, nil
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
+		if MatchesQuit(msg) {
 			f.quitting = true
 			return f, tea.Quit
 		}
@@ -112,7 +111,13 @@ func (f filePicker) View() string {
 	filePickerContent := f.filepicker.View()
 	s.WriteString(filePickerContent + "\n\n")
 
-	helpText := f.styles.hint.Render("↑/↓ Navigate • Enter Select • Ctrl+C Quit")
+	upKeys := GetFuzzyUpKeys()
+	downKeys := GetFuzzyDownKeys()
+	selectKeys := GetSelectKeys()
+	quitKeys := GlobalKeybindingManager.GetKeysForAction(ActionQuit)
+
+	helpText := f.styles.hint.Render(fmt.Sprintf("%s/%s Navigate • %s Select • %s Quit",
+		upKeys[0], downKeys[0], selectKeys[0], quitKeys[0]))
 	centeredHelp := lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center).Render(helpText)
 	s.WriteString(centeredHelp)
 

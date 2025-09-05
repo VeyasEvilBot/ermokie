@@ -149,9 +149,9 @@ func GetSplitByRunIDAndIdx(data *sql.DB, runID int, splitIdx int) (*Split, error
 
 func GetSplitByRunNameAndIdx(data *sql.DB, runName string, splitIdx int) (*Split, error) {
 	results, err := db.QueryRows(data,
-		`SELECT s.id, s.run_id, s.name, s.hit_count, s.pb_hit_count, s.idx, s.save_file 
-		 FROM splits s 
-		 JOIN runs r ON s.run_id = r.id 
+		`SELECT s.id, s.run_id, s.name, s.hit_count, s.pb_hit_count, s.idx, s.save_file
+		 FROM splits s
+		 JOIN runs r ON s.run_id = r.id
 		 WHERE r.name = ? AND s.idx = ?`,
 		func(rows *sql.Rows) (Split, error) {
 			var s Split
@@ -159,6 +159,85 @@ func GetSplitByRunNameAndIdx(data *sql.DB, runName string, splitIdx int) (*Split
 			return s, err
 		},
 		runName, splitIdx,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	return &results[0], nil
+}
+
+func GetActiveRun(data *sql.DB) (*Run, error) {
+	results, err := db.QueryRows(data,
+		`SELECT id, name, game, category, attempts, active_split
+		FROM runs r JOIN misc_info m ON m.active_run = r.id
+		`,
+		func(row *sql.Rows) (Run, error) {
+			var r Run
+			err := row.Scan(&r.ID, &r.Name, &r.Game, &r.Category, &r.Attempts, &r.ActiveSplit)
+			return r, err
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	return &results[0], nil
+}
+
+func GetRunAttemptsByName(data *sql.DB, runName string) (int, error) {
+	results, err := db.QueryRows(data,
+		"SELECT attempts FROM runs WHERE name = ?",
+		func(rows *sql.Rows) (Run, error) {
+			var r Run
+			err := rows.Scan(&r.Attempts)
+			return r, err
+		},
+		runName,
+	)
+	if err != nil {
+		return 0, err
+	}
+	if len(results) == 0 {
+		return 0, sql.ErrNoRows
+	}
+	return results[0].Attempts, nil
+}
+
+func GetRunIDByName(data *sql.DB, runName string) (int, error) {
+	results, err := db.QueryRows(data,
+		"SELECT id FROM runs WHERE name = ?",
+		func(rows *sql.Rows) (Run, error) {
+			var r Run
+			err := rows.Scan(&r.ID)
+			return r, err
+		},
+		runName,
+	)
+	if err != nil {
+		return 0, err
+	}
+	if len(results) == 0 {
+		return 0, sql.ErrNoRows
+	}
+	return results[0].ID, nil
+}
+
+func GetSplitByID(data *sql.DB, splitID int) (*Split, error) {
+	results, err := db.QueryRows(data,
+		`SELECT id, run_id, name, hit_count, pb_hit_count, idx, save_file 
+		 FROM splits 
+		 WHERE id = ?`,
+		func(rows *sql.Rows) (Split, error) {
+			var s Split
+			err := rows.Scan(&s.ID, &s.RunID, &s.Name, &s.Hits, &s.PBHits, &s.Idx, &s.SaveFile)
+			return s, err
+		},
+		splitID,
 	)
 	if err != nil {
 		return nil, err

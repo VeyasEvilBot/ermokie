@@ -9,8 +9,10 @@ type Config struct {
 }
 
 type GeneralSettings struct {
-	ClearOnRename bool   `toml:"clear_on_rename"`
-	DataDir       string `toml:"data_dir"`
+	ClearOnRename      bool   `toml:"clear_on_rename"`
+	DataDir            string `toml:"data_dir"`
+	ShowAttemptCounter bool   `toml:"disable_attempt_counter"`
+	ShowDiff           bool   `toml:"show_hit_diff"`
 }
 
 type ThemeConfig struct {
@@ -20,8 +22,7 @@ type ThemeConfig struct {
 }
 
 type Binds struct {
-	// Quit string `toml:"quit"`
-	// Save string `toml:"save"`
+	Keymap string `toml:"keymap"`
 }
 
 type AppThemeConfig struct {
@@ -44,5 +45,8 @@ func NewConfig() Config {
 
 	c.Theme.App.Name = "default"
 	c.Theme.Overlay.Name = "default"
+	c.KeyBinds.Keymap = "arrow-vim"
+	c.General.ShowAttemptCounter = true
+	c.General.ShowDiff = false
 	return c
 }

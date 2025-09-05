@@ -85,6 +85,13 @@ create table if not exists splits (
   foreign key (run_id) references runs(id) on delete cascade
 );
 
+create table if not exists misc_info (
+  one integer not null default 1 check (one = 1) unique,
+  active_run integer default null
+);
+
+insert or ignore into misc_info (one, active_run) values (1, null);
+
 create unique index if not exists idx_splits_run_id_idx
   on splits(run_id, idx);
 

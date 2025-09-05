@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/stefanistkuhl/ermokie/pkg/models"
 	"github.com/stefanistkuhl/ermokie/pkg/models/styles"
 )
 
@@ -50,8 +51,7 @@ func (m *screenInput) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.w, m.h = k.Width, k.Height
 		return m, nil
 	case tea.KeyMsg:
-		switch k.String() {
-		case "enter":
+		if models.MatchesConfirm(k) {
 			val := m.ti.Value()
 			if m.validate != nil {
 				if err := m.validate(val); err != nil {
@@ -60,9 +60,13 @@ func (m *screenInput) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, func() tea.Msg { return StepResult{Value: val} }
-		case "esc":
+		}
+
+		if models.MatchesCancel(k) {
 			return m, func() tea.Msg { return StepResult{Value: ""} }
-		case "ctrl+c":
+		}
+
+		if models.MatchesQuit(k) {
 			return m, tea.Quit
 		}
 	}
@@ -79,7 +83,8 @@ func (m *screenInput) View() string {
 		m.ti.View(),
 		func() string {
 			if m.errText == "" {
-				return m.s.Hint.Render("(enter to confirm, esc to cancel)")
+				return m.s.Hint.Render(fmt.Sprintf("(%s to confirm, %s to cancel)",
+					models.GetConfirmKeys()[0], models.GetCancelKeys()[0]))
 			}
 			return m.s.Label.Render(fmt.Sprintf("Error: %s", m.errText))
 		}(),

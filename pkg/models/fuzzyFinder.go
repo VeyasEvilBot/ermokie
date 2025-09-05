@@ -1,6 +1,7 @@
 package models
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
 	"slices"
@@ -19,20 +20,23 @@ var (
 )
 
 type selectionMsg []string
+type cancelPickerMsg struct{}
 
 type fuzzyFinder struct {
-	title     string
-	viewport  viewport.Model
-	rows      []string
-	cursor    int
-	input     textinput.Model
-	liveValue string
-	termW     int
-	termH     int
-	boxW      int
-	multiMode bool
-	selection []string
-	styles    styles.Styles
+	title          string
+	viewport       viewport.Model
+	rows           []string
+	cursor         int
+	input          textinput.Model
+	liveValue      string
+	termW          int
+	termH          int
+	boxW           int
+	multiMode      bool
+	selection      []string
+	styles         styles.Styles
+	fromMainScreen bool
+	db             *sql.DB
 }
 
 func newFuzzyFinder(data []string, multiMode bool, title string) (*fuzzyFinder, error) {
@@ -60,6 +64,10 @@ func newFuzzyFinder(data []string, multiMode bool, title string) (*fuzzyFinder, 
 }
 
 func newFuzzyFinderWithTheme(data []string, multiMode bool, themeStyles styles.Styles, title string) (*fuzzyFinder, error) {
+	return newFuzzyFinderWithThemeAndFlag(data, multiMode, themeStyles, title, false, nil)
+}
+
+func newFuzzyFinderWithThemeAndFlag(data []string, multiMode bool, themeStyles styles.Styles, title string, fromMainScreen bool, db *sql.DB) (*fuzzyFinder, error) {
 	ti := textinput.New()
 	ti.Prompt = styles.CursorGlyph
 	ti.Focus()
@@ -69,16 +77,18 @@ func newFuzzyFinderWithTheme(data []string, multiMode bool, themeStyles styles.S
 		BorderForeground(themeStyles.Colors.Accent)
 
 	f := &fuzzyFinder{
-		title:     title,
-		viewport:  vp,
-		rows:      data,
-		cursor:    0,
-		input:     ti,
-		termW:     0,
-		termH:     0,
-		boxW:      0,
-		multiMode: multiMode,
-		styles:    themeStyles,
+		title:          title,
+		viewport:       vp,
+		rows:           data,
+		cursor:         0,
+		input:          ti,
+		termW:          0,
+		termH:          0,
+		boxW:           0,
+		multiMode:      multiMode,
+		styles:         themeStyles,
+		fromMainScreen: fromMainScreen,
+		db:             db,
 	}
 	return f, nil
 }
@@ -148,13 +158,11 @@ func (f *fuzzyFinder) refreshContent() {
 }
 
 func (f *fuzzyFinder) Init() tea.Cmd {
-	return nil
+	return textinput.Blink
 }
 
-// SetStyles allows updating the fuzzy finder's theme after creation
 func (f *fuzzyFinder) SetStyles(themeStyles styles.Styles) {
 	f.styles = themeStyles
-	// Update viewport styling with new theme colors
 	f.viewport.Style = lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(f.styles.Colors.Accent)
@@ -172,12 +180,11 @@ func (f *fuzzyFinder) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		f.termW = msg.Width
 		f.termH = msg.Height
-		f.boxW = int(float64(msg.Width) * 0.6)
+		f.boxW = int(float64(msg.Width) * 0.5)
+		// Use the same calculation as the working code
 		promptCells := lipgloss.Width(f.input.Prompt)
-		// f.input.Width = max(f.boxW-promptCells-3, 0)
-		f.input.Width = f.boxW - promptCells - 3
+		f.input.Width = max(f.boxW-promptCells-3, 0)
 		f.viewport.Width = f.boxW
-		// Update viewport styling with theme colors
 		f.viewport.Style = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderForeground(f.styles.Colors.Accent)
@@ -187,61 +194,97 @@ func (f *fuzzyFinder) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "esc":
-			return f, tea.Quit
+			return f, func() tea.Msg { return cancelPickerMsg{} }
+
 		case "up":
-			if f.cursor > 0 {
-				f.cursor--
-				f.refreshContent()
-			}
-			return f, nil
-		case "down":
-			if f.cursor < len(f.rows)-1 {
-				f.cursor++
-				f.refreshContent()
-			}
-			return f, nil
-		case "enter":
-			var choice string
+			// Move within the currently shown list (filtered or full)
+			var maxIdx int
 			if f.liveValue == "" {
-				choice = f.rows[f.cursor]
+				maxIdx = len(f.rows) - 1
 			} else {
 				matches := fuzzy.Find(f.liveValue, f.rows)
 				results := getMatches(matches)
-				if f.cursor < len(results) {
+				maxIdx = len(results) - 1
+			}
+			if maxIdx >= 0 && f.cursor > 0 {
+				f.cursor--
+			}
+			f.refreshContent()
+			return f, nil
+
+		case "down":
+			var maxIdx int
+			if f.liveValue == "" {
+				maxIdx = len(f.rows) - 1
+			} else {
+				matches := fuzzy.Find(f.liveValue, f.rows)
+				results := getMatches(matches)
+				maxIdx = len(results) - 1
+			}
+			if maxIdx >= 0 && f.cursor < maxIdx {
+				f.cursor++
+			}
+			f.refreshContent()
+			return f, nil
+
+		case "enter":
+			var choice string
+			if f.liveValue == "" {
+				if len(f.rows) > 0 && f.cursor >= 0 && f.cursor < len(f.rows) {
+					choice = f.rows[f.cursor]
+				}
+			} else {
+				matches := fuzzy.Find(f.liveValue, f.rows)
+				results := getMatches(matches)
+				if len(results) > 0 && f.cursor >= 0 && f.cursor < len(results) {
 					choice = results[f.cursor]
 				}
 			}
 
-			if !slices.Contains(f.selection, choice) {
+			if choice != "" && !slices.Contains(f.selection, choice) {
 				f.selection = append(f.selection, choice)
 			}
 
-			return f, tea.Sequence(
-				func() tea.Msg { return selectionMsg(f.selection) },
-				tea.Quit,
-			)
+			return f, func() tea.Msg { return selectionMsg(deduplicate(f.selection)) }
+
 		case "tab":
 			if f.multiMode {
-				row := f.rows[f.cursor]
-				if slices.Contains(f.selection, row) {
-					f.selection = slices.DeleteFunc(f.selection, func(s string) bool {
-						return s == row
-					})
-				} else {
-					f.selection = append(f.selection, row)
+				if len(f.rows) > 0 && f.cursor >= 0 && f.cursor < len(f.rows) {
+					row := f.rows[f.cursor]
+					if slices.Contains(f.selection, row) {
+						f.selection = slices.DeleteFunc(f.selection, func(s string) bool {
+							return s == row
+						})
+					} else {
+						f.selection = append(f.selection, row)
+					}
 				}
 			}
 		}
-
 	}
 
 	var cmd tea.Cmd
 	f.input, cmd = f.input.Update(msg)
-
 	f.liveValue = f.input.Value()
-
 	f.refreshContent()
 	return f, cmd
+}
+
+func (f *fuzzyFinder) ViewBox() string {
+	gap := "\n"
+	if f.title != "" {
+		title := f.styles.Title.Render(f.title)
+		boxedInput := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(f.styles.Colors.Accent).
+			Render(f.input.View())
+		return title + gap + boxedInput + gap + f.viewport.View() + gap + f.helpView()
+	}
+	boxedInput := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(f.styles.Colors.Accent).
+		Render(f.input.View())
+	return boxedInput + gap + f.viewport.View() + gap + f.helpView()
 }
 
 func (f *fuzzyFinder) View() string {
@@ -284,17 +327,6 @@ func getMatches(matches []fuzzy.Match) []string {
 	return results
 }
 
-// func countLines(s string) int {
-// 	return strings.Count(s, "\n") + 1
-// }
-//
-// func clearLines(n int) {
-// 	for range make([]struct{}, n) {
-// 		fmt.Print("\033[1A")
-// 		fmt.Print("\033[2K")
-// 	}
-// }
-
 func deduplicate(slice []string) []string {
 	seen := make(map[string]bool)
 	result := make([]string, 0, len(slice))
@@ -325,32 +357,43 @@ func NewFuzzyFinder(input []string, multiMode bool, title string) []string {
 	}
 
 	final := a.(*fuzzyFinder)
-	// lines := countLines(final.View())
-	// clearLines(lines)
 
 	result = deduplicate(final.selection)
 	return result
 }
 
 func NewFuzzyFinderWithTheme(input []string, multiMode bool, themeStyles styles.Styles, title string) []string {
-	var result []string
-	model, err := newFuzzyFinderWithTheme(input, multiMode, themeStyles, title)
+	return NewFuzzyFinderWithThemeAndFlag(input, multiMode, themeStyles, title, false, nil)
+}
 
+func NewFuzzyFinderWithThemeAndFlag(
+	input []string,
+	multiMode bool,
+	themeStyles styles.Styles,
+	title string,
+	fromMainScreen bool,
+	db *sql.DB,
+) []string {
+	var result []string
+	model, err := newFuzzyFinderWithThemeAndFlag(
+		input, multiMode, themeStyles, title, fromMainScreen, db,
+	)
 	if err != nil {
 		fmt.Println("Could not initialize Bubble Tea model:", err)
-		os.Exit(1)
+		return []string{}
 	}
 
-	a, err := tea.NewProgram(model).Run()
+	var a tea.Model
+	if fromMainScreen {
+		a, err = tea.NewProgram(model).Run()
+	} else {
+		a, err = tea.NewProgram(model, tea.WithAltScreen()).Run()
+	}
 	if err != nil {
-		fmt.Println("Bummer, there's been an error:", err)
-		os.Exit(1)
+		return []string{}
 	}
 
 	final := a.(*fuzzyFinder)
-	// lines := countLines(final.View())
-	// clearLines(lines)
-
 	result = deduplicate(final.selection)
 	return result
 }

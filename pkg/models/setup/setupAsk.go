@@ -1,8 +1,11 @@
 package setup
 
 import (
+	"fmt"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/stefanistkuhl/ermokie/pkg/models"
 	"github.com/stefanistkuhl/ermokie/pkg/models/styles"
 )
 
@@ -39,30 +42,38 @@ func (m *screenAsk) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.w, m.h = k.Width, k.Height
 		return m, nil
 	case tea.KeyMsg:
-		switch k.String() {
-		case "left", "h", "up", "k":
+		if models.MatchesLeft(k) || models.MatchesUp(k) {
 			if m.focusIdx > 0 {
 				m.focusIdx--
 			}
 			return m, nil
-		case "right", "l", "down", "j":
+		}
+
+		if models.MatchesRight(k) || models.MatchesDown(k) {
 			if m.focusIdx < 1 {
 				m.focusIdx++
 			}
 			return m, nil
+		}
 
-		case "y", "Y":
+		if models.MatchesYes(k) {
 			return m, func() tea.Msg { return StepResult{Value: true} }
-		case "n", "N":
-			return m, func() tea.Msg { return StepResult{Value: false} }
+		}
 
-		case "enter", " ":
+		if models.MatchesNo(k) {
+			return m, func() tea.Msg { return StepResult{Value: false} }
+		}
+
+		if models.MatchesConfirm(k) {
 			val := (m.focusIdx == 0)
 			return m, func() tea.Msg { return StepResult{Value: val} }
+		}
 
-		case "esc":
+		if models.MatchesCancel(k) {
 			return m, func() tea.Msg { return StepResult{Value: false} }
-		case "ctrl+c", "q":
+		}
+
+		if models.MatchesQuit(k) {
 			return m, tea.Quit
 		}
 	}
@@ -96,7 +107,9 @@ func (m *screenAsk) View() string {
 		m.s.Label.Render(m.question),
 		"",
 		row,
-		m.s.Hint.Render("←/→ h/j/k/l to move, Enter to confirm; y/n also work"),
+		m.s.Hint.Render(fmt.Sprintf("%s/%s to move, %s to confirm; %s/%s also work",
+			models.GetLeftKeys()[0], models.GetRightKeys()[0],
+			models.GetConfirmKeys()[0], models.GetYesKeys()[0], models.GetNoKeys()[0])),
 	)
 
 	styledBody := m.s.Window.Render(body)

@@ -124,6 +124,15 @@ func (tm *ThemeManager) GetCurrentTheme() string {
 	return tm.currentTheme
 }
 
+func (tm *ThemeManager) ValidateTheme(name string) bool {
+	for _, theme := range tm.availableThemes {
+		if theme.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 func (tm *ThemeManager) GetThemeColors(themeName string) (styles.SetupColors, bool) {
 	if theme, exists := tm.availableThemes[themeName]; exists {
 		return theme.Colors, true

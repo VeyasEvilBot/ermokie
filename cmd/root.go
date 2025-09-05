@@ -25,10 +25,8 @@ var rootCmd = &cobra.Command{
 	Short: "",
 	Long:  ``,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println(launchSetup)
 		cfg, err := config.LoadConfig()
 		if err != nil || launchSetup {
-			// fmt.Println("Config not found or invalid, starting setup...")
 			themeManager := setup.NewThemeManager()
 			availableThemes := themeManager.GetAvailableThemes()
 			cfg = config.NewConfig()
@@ -52,6 +50,34 @@ var rootCmd = &cobra.Command{
 					},
 				},
 				{
+					ID:          "choose-keymap",
+					Kind:        setup.StepList,
+					Title:       "Keymap Selector",
+					Description: "Choose your preferred keybinding style",
+					Options:     models.GetAvailableKeymaps(),
+					OnDoneWithStyles: func(v any, currentStyles styles.Styles) tea.Cmd {
+						cfg.KeyBinds.Keymap = fmt.Sprintf("%v", v)
+						models.LoadKeymapFromConfig(cfg.KeyBinds.Keymap)
+
+						return tea.Batch(
+							tea.ClearScreen,
+							tea.EnterAltScreen,
+						)
+					},
+				},
+				{
+					ID:          "show-help",
+					Kind:        setup.StepHelp,
+					Title:       "Help - Keybindings",
+					Description: "Review the keybindings for your selected keymap",
+					OnDone: func(v any) tea.Cmd {
+						return tea.Batch(
+							tea.ClearScreen,
+							tea.EnterAltScreen,
+						)
+					},
+				},
+				{
 					ID:          "import-splits",
 					Kind:        setup.StepAsk,
 					Title:       "Import Splits",
@@ -61,14 +87,17 @@ var rootCmd = &cobra.Command{
 					OnDoneWithStyles: func(v any, currentStyles styles.Styles) tea.Cmd {
 						if v == true {
 							xmlFile := models.NewFilePickerWithTheme(currentStyles)
-							data := db.Init()
-							profiles, err := hcmmigration.LoadProfiles(xmlFile)
-							if err != nil {
-								log.Fatalf("Failed to convert the XML file to Hit Counter Manager Profiles %s", err)
-							}
-							insertErr := hcmmigration.ImportProfiles(data, profiles)
-							if insertErr != nil {
-								log.Fatalf("Failed to insert the Hit Counter Manager Profiles into the DB %s", err)
+							if xmlFile == "" {
+							} else {
+								data := db.Init()
+								profiles, err := hcmmigration.LoadProfiles(xmlFile)
+								if err != nil {
+									log.Fatalf("Failed to convert the XML file to Hit Counter Manager Profiles %s", err)
+								}
+								insertErr := hcmmigration.ImportProfiles(data, profiles)
+								if insertErr != nil {
+									log.Fatalf("Failed to insert the Hit Counter Manager Profiles into the DB %s", insertErr)
+								}
 							}
 						}
 						return tea.Batch(
@@ -150,8 +179,18 @@ var rootCmd = &cobra.Command{
 				log.Println("setup error:", err)
 				os.Exit(1)
 			}
+		} else {
+			models.LoadKeymapFromConfig(cfg.KeyBinds.Keymap)
+			theme := "default"
+			themeManager := setup.NewThemeManager()
+			if themeManager.ValidateTheme(cfg.Theme.App.Name) {
+				theme = cfg.Theme.App.Name
+			}
+			styles := themeManager.ApplyTheme(theme, styles.DefaultStyles())
+			data := db.Init()
+			models.NewMainScreen(styles, data)
 		}
-		fmt.Println(cfg)
+
 		return nil
 	},
 }

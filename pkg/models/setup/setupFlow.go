@@ -3,6 +3,7 @@ package setup
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/stefanistkuhl/ermokie/pkg/models"
 	"github.com/stefanistkuhl/ermokie/pkg/models/styles"
 )
 
@@ -18,10 +19,10 @@ type flowModel struct {
 	quitAfter    bool
 	loadDefaults func() error
 	themeManager *ThemeManager
-	config       interface{}
+	config       any
 }
 
-func NewSetupFlow(loadDefaults func() error, steps []StepSpec, config interface{}) tea.Model {
+func NewSetupFlow(loadDefaults func() error, steps []StepSpec, config any) tea.Model {
 	return &flowModel{
 		s:            styles.DefaultStyles(),
 		stepSpecs:    steps,
@@ -50,6 +51,12 @@ func (m *flowModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.inChild != nil {
 						m.inChild.Update(StyleUpdateMsg{NewStyles: m.s})
 					}
+				}
+			}
+
+			if id == "choose-keymap" && r.Value != nil {
+				if keymapName, ok := r.Value.(string); ok {
+					models.LoadKeymapFromConfig(keymapName)
 				}
 			}
 
@@ -88,20 +95,21 @@ func (m *flowModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		switch v.String() {
-		case "left", "h", "up", "k":
+		if models.MatchesLeft(v) || models.MatchesUp(v) {
 			if m.menuIdx > 0 {
 				m.menuIdx--
 			}
 			return m, nil
+		}
 
-		case "right", "l", "down", "j":
+		if models.MatchesRight(v) || models.MatchesDown(v) {
 			if m.menuIdx < 1 {
 				m.menuIdx++
 			}
 			return m, nil
+		}
 
-		case "enter":
+		if models.MatchesConfirm(v) {
 			if m.menuIdx == 0 {
 				// Quickstart - save config with defaults and exit
 				if m.loadDefaults != nil {
@@ -116,8 +124,9 @@ func (m *flowModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			return m, m.startChildFor(m.stepSpecs[0])
+		}
 
-		case "ctrl+c", "q", "esc":
+		if models.MatchesQuit(v) {
 			return m, tea.Quit
 		}
 	}
@@ -158,9 +167,15 @@ func (m *flowModel) startChildFor(spec StepSpec) tea.Cmd {
 		}
 		m.inChild = child
 	case StepList:
-		m.inChild = newScreenList(m.s, spec, m.width, m.height)
+		m.inChild = NewScreenList(m.s, spec, m.width, m.height)
 	case StepInput:
 		child := newScreenInput(m.s, spec)
+		if m.width > 0 && m.height > 0 {
+			child.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		}
+		m.inChild = child
+	case StepHelp:
+		child := newScreenHelp(m.s, spec)
 		if m.width > 0 && m.height > 0 {
 			child.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		}

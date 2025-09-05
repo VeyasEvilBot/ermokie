@@ -83,3 +83,15 @@ func QueryRows[T any](
 
 	return results, rows.Err()
 }
+
+func UpdateRows(
+	db *sql.DB,
+	query string,
+	args ...any,
+) (int64, error) {
+	result, err := db.Exec(query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}

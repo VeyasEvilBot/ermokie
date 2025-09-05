@@ -6,25 +6,27 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/stefanistkuhl/ermokie/pkg/models"
 	"github.com/stefanistkuhl/ermokie/pkg/models/styles"
 )
 
 type screenList struct {
-	viewport         viewport.Model
-	s                styles.Styles
-	title            string
-	desc             string
-	options          []string
-	cursor           int
-	w, h             int
-	listWidth        int
-	listHeight       int
-	isThemeSelection bool
-	themeManager     *ThemeManager
-	flowStyles       *styles.Styles
+	viewport          viewport.Model
+	s                 styles.Styles
+	title             string
+	desc              string
+	options           []string
+	cursor            int
+	w, h              int
+	listWidth         int
+	listHeight        int
+	isThemeSelection  bool
+	isKeymapSelection bool
+	themeManager      *ThemeManager
+	flowStyles        *styles.Styles
 }
 
-func newScreenList(s styles.Styles, spec StepSpec, w, h int) *screenList {
+func NewScreenList(s styles.Styles, spec StepSpec, w, h int) *screenList {
 	vp := viewport.New(0, 0)
 	vp.Style = lipgloss.NewStyle()
 
@@ -45,6 +47,11 @@ func newScreenList(s styles.Styles, spec StepSpec, w, h int) *screenList {
 			m.s = m.themeManager.ApplyTheme(spec.Options[0], m.s)
 		}
 		m.title = "Theme Selector"
+	}
+
+	if spec.ID == "choose-keymap" {
+		m.isKeymapSelection = true
+		m.title = "Keymap Selector"
 	}
 
 	m.applySize(w, h)
@@ -81,8 +88,7 @@ func (m *screenList) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "up", "k":
+		if models.MatchesUp(msg) {
 			if m.cursor > 0 {
 				m.cursor--
 				m.ensureCursorVisible()
@@ -91,11 +97,18 @@ func (m *screenList) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					themeName := m.options[m.cursor]
 					m.s = m.themeManager.ApplyTheme(themeName, m.s)
 					m.refreshUI() // Force complete UI refresh
+				} else if m.isKeymapSelection && len(m.options) > 0 {
+					// Apply keymap immediately when moving cursor
+					keymapName := m.options[m.cursor]
+					models.LoadKeymapFromConfig(keymapName)
+					m.rebuildList()
 				} else {
 					m.rebuildList()
 				}
 			}
-		case "down", "j":
+		}
+
+		if models.MatchesDown(msg) {
 			if m.cursor < max(0, len(m.options)-1) {
 				m.cursor++
 				m.ensureCursorVisible()
@@ -103,22 +116,36 @@ func (m *screenList) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					themeName := m.options[m.cursor]
 					m.s = m.themeManager.ApplyTheme(themeName, m.s)
 					m.refreshUI()
+				} else if m.isKeymapSelection && len(m.options) > 0 {
+					// Apply keymap immediately when moving cursor
+					keymapName := m.options[m.cursor]
+					models.LoadKeymapFromConfig(keymapName)
+					m.rebuildList()
 				} else {
 					m.rebuildList()
 				}
 			}
-		case "enter":
+		}
+
+		if models.MatchesConfirm(msg) {
 			if len(m.options) > 0 {
 				val := m.options[m.cursor]
 				if m.isThemeSelection && m.themeManager != nil {
 					m.s = m.themeManager.ApplyTheme(val, m.s)
 					m.refreshUI()
+				} else if m.isKeymapSelection {
+					// Apply keymap on confirmation
+					models.LoadKeymapFromConfig(val)
 				}
 				return m, func() tea.Msg { return StepResult{Value: val} }
 			}
-		case "esc", "q":
+		}
+
+		if models.MatchesCancel(msg) {
 			return m, func() tea.Msg { return StepResult{Value: nil} }
-		case "ctrl+c":
+		}
+
+		if models.MatchesQuit(msg) {
 			return m, tea.Quit
 		}
 	}
@@ -145,6 +172,11 @@ func (m *screenList) rebuildList() {
 
 		if m.isThemeSelection && m.themeManager != nil {
 			desc := m.themeManager.GetThemeDescription(option)
+			if desc != "" {
+				txt += " - " + desc
+			}
+		} else if m.isKeymapSelection {
+			desc := models.GlobalKeybindingManager.GetKeybindingSetDescription(option)
 			if desc != "" {
 				txt += " - " + desc
 			}

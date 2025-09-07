@@ -78,8 +78,14 @@ create table if not exists splits (
   id integer primary key autoincrement,
   run_id integer not null,
   name text not null,
-  hit_count integer default 0,
-  pb_hit_count integer default 0,
+  hit_count integer default 0 check (hit_count >= 0),
+  pb_hit_count integer default 0 check (pb_hit_count >= 0),
+  diff integer generated always as (
+    case
+      when coalesce(hit_count, 0) - coalesce(pb_hit_count, 0) < 0 then 0
+      else coalesce(hit_count, 0) - coalesce(pb_hit_count, 0)
+    end
+  ) stored,
   idx integer not null,
   save_file text default null,
   foreign key (run_id) references runs(id) on delete cascade

@@ -7,6 +7,7 @@ import (
 
 type ThemeManager struct {
 	availableThemes map[string]Theme
+	themeOrder      []string
 	currentTheme    string
 }
 
@@ -20,6 +21,7 @@ func NewThemeManager() *ThemeManager {
 	tm := &ThemeManager{
 		availableThemes: make(map[string]Theme),
 		currentTheme:    "rose-pine-moon",
+		themeOrder:      make([]string, 0, 8),
 	}
 
 	tm.availableThemes["default"] = Theme{
@@ -27,6 +29,7 @@ func NewThemeManager() *ThemeManager {
 		Description: "Default terminal colors",
 		Colors:      styles.DefaultColors(),
 	}
+	tm.themeOrder = append(tm.themeOrder, "default")
 
 	tm.availableThemes["rose-pine-moon"] = Theme{
 		Name:        "rose-pine-moon",
@@ -43,6 +46,7 @@ func NewThemeManager() *ThemeManager {
 			SelectedText: lipgloss.Color("233"),
 		},
 	}
+	tm.themeOrder = append(tm.themeOrder, "rose-pine-moon")
 
 	tm.availableThemes["catppuccin-macchiato"] = Theme{
 		Name:        "catppuccin-macchiato",
@@ -59,6 +63,7 @@ func NewThemeManager() *ThemeManager {
 			SelectedText: lipgloss.Color("233"),
 		},
 	}
+	tm.themeOrder = append(tm.themeOrder, "catppuccin-macchiato")
 
 	tm.availableThemes["tokyo-night-dark"] = Theme{
 		Name:        "tokyo-night-dark",
@@ -75,16 +80,71 @@ func NewThemeManager() *ThemeManager {
 			SelectedText: lipgloss.Color("17"),
 		},
 	}
+	tm.themeOrder = append(tm.themeOrder, "tokyo-night-dark")
+
+	tm.SetThemeOrder([]string{
+		"default",
+		"catppuccin-macchiato",
+		"rose-pine-moon",
+		"tokyo-night-dark",
+	})
 
 	return tm
 }
 
 func (tm *ThemeManager) GetAvailableThemes() []string {
-	themes := make([]string, 0, len(tm.availableThemes))
-	for name := range tm.availableThemes {
-		themes = append(themes, name)
+	out := make([]string, len(tm.themeOrder))
+	copy(out, tm.themeOrder)
+	return out
+}
+
+func (tm *ThemeManager) SetThemeOrder(order []string) {
+	seen := make(map[string]bool, len(order))
+	newOrder := make([]string, 0, len(tm.availableThemes))
+
+	for _, name := range order {
+		if _, ok := tm.availableThemes[name]; ok && !seen[name] {
+			newOrder = append(newOrder, name)
+			seen[name] = true
+		}
 	}
-	return themes
+
+	for _, name := range tm.themeOrder {
+		if !seen[name] {
+			if _, ok := tm.availableThemes[name]; ok {
+				newOrder = append(newOrder, name)
+				seen[name] = true
+			}
+		}
+	}
+
+	tm.themeOrder = newOrder
+}
+
+func (tm *ThemeManager) AddTheme(t Theme) {
+	_, existed := tm.availableThemes[t.Name]
+	tm.availableThemes[t.Name] = t
+	if !existed {
+		tm.themeOrder = append(tm.themeOrder, t.Name)
+	}
+}
+
+func (tm *ThemeManager) RemoveTheme(name string) bool {
+	if name == tm.currentTheme {
+		return false
+	}
+	if _, ok := tm.availableThemes[name]; !ok {
+		return false
+	}
+	delete(tm.availableThemes, name)
+	newOrder := new([]string)
+	for _, n := range tm.themeOrder {
+		if n != name {
+			*newOrder = append(*newOrder, n)
+		}
+	}
+	tm.themeOrder = *newOrder
+	return true
 }
 
 func (tm *ThemeManager) GetThemeDescription(themeName string) string {

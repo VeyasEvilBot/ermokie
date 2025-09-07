@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/reflow/truncate"
 	"github.com/stefanistkuhl/ermokie/pkg/config"
 	"github.com/stefanistkuhl/ermokie/pkg/db/fetching"
 	"github.com/stefanistkuhl/ermokie/pkg/db/updating"
@@ -20,9 +21,12 @@ import (
 type errMsg error
 
 type rowData struct {
-	Name string
-	Type string // "run" or "split"
-	ID   int
+	Name    string
+	Type    string // "run" or "split"
+	ID      int
+	Hits    int
+	HitPB   int
+	HitDiff int
 }
 
 type model struct {
@@ -35,9 +39,6 @@ type model struct {
 	runID           int
 	splitID         int
 	runAttempts     int
-	hits            int
-	hitPB           int
-	hitDiff         int
 	termW           int
 	termH           int
 	db              *sql.DB
@@ -58,9 +59,59 @@ type initDataMsg struct {
 	err       error
 }
 
-type cancelHelpMsg struct{}
-
 var QuitKeys = GetQuitKeys()
+
+func clipCells(s string, w int) string {
+	if w <= 0 {
+		return ""
+	}
+	if lipgloss.Width(s) <= w {
+		return s
+	}
+	tail := "…"
+	return truncate.StringWithTail(s, uint(w), tail)
+}
+
+func centerNumber(num int, width int) string {
+	numStr := fmt.Sprintf("%d", num)
+	numWidth := len(numStr)
+	if numWidth >= width {
+		return numStr
+	}
+
+	totalSpaces := width - numWidth
+	leftSpaces := totalSpaces / 2
+	rightSpaces := totalSpaces - leftSpaces
+
+	return fmt.Sprintf("%*s%s%*s", leftSpaces, "", numStr, rightSpaces, "")
+}
+
+func centerSignedNumber(num int, width int) string {
+	numStr := fmt.Sprintf("%+d", num)
+	numWidth := len(numStr)
+	if numWidth >= width {
+		return numStr
+	}
+
+	totalSpaces := width - numWidth
+	leftSpaces := totalSpaces / 2
+	rightSpaces := totalSpaces - leftSpaces
+
+	return fmt.Sprintf("%*s%s%*s", leftSpaces, "", numStr, rightSpaces, "")
+}
+
+func centerText(text string, width int) string {
+	textWidth := len(text)
+	if textWidth >= width {
+		return text
+	}
+
+	totalSpaces := width - textWidth
+	leftSpaces := totalSpaces / 2
+	rightSpaces := totalSpaces - leftSpaces
+
+	return fmt.Sprintf("%*s%s%*s", leftSpaces, "", text, rightSpaces, "")
+}
 
 func initialModel(theme styles.Styles, db *sql.DB) model {
 	s := spinner.New()
@@ -112,11 +163,15 @@ func (m *model) buildListWithSplits() {
 	m.rows = make([]rowData, len(splits))
 	for i, s := range splits {
 		m.rows[i] = rowData{
-			Name: s.Name,
-			Type: "split",
-			ID:   s.ID,
+			Name:    s.Name,
+			Type:    "split",
+			ID:      s.ID,
+			Hits:    s.Hits,
+			HitPB:   s.PBHits,
+			HitDiff: s.Diff,
 		}
 	}
+	m.setCursorToActiveSplit()
 	m.clampCursor()
 	m.rebuildList()
 }
@@ -180,34 +235,134 @@ func (m *model) rebuildList() {
 	} else if err == nil {
 		m.activeRun = r
 	}
-	lines := make([]string, 0, len(m.rows))
-	if m.activeRun == nil {
-		for i, row := range m.rows {
-			if i == m.cursor {
-				lines = append(lines, lineStyle.Render(sel.Render(styles.CursorGlyph+row.Name)))
-				if row.Type == "run" {
-					m.runID = row.ID
-					run, err := fetching.GetRunByID(m.db, m.runID)
-					if err != nil {
-						m.err = err
-						return
-					}
-					m.runName = run.Name
-					m.runAttempts = run.Attempts
-				}
-			} else {
-				lines = append(lines, lineStyle.Render(row.Name))
+	leftPad := 1
+	contentWidth := (width - 2) - leftPad
+	lines := make([]string, 0, len(m.rows)+2)
+	isSplit := false
+
+	for i, row := range m.rows {
+		isCursor := i == m.cursor
+
+		if m.activeRun == nil && isCursor && row.Type == "run" {
+			m.runID = row.ID
+			run, err := fetching.GetRunByID(m.db, m.runID)
+			if err != nil {
+				m.err = err
+				return
 			}
+			m.runName = run.Name
+			m.runID = run.ID
 		}
-	} else {
-		for i, row := range m.rows {
-			if i == m.cursor {
-				lines = append(lines, lineStyle.Render(sel.Render(styles.CursorGlyph+row.Name)))
-			} else {
-				lines = append(lines, lineStyle.Render(row.Name))
+		switch row.Type {
+		case "split":
+			if row.Type == "split" {
+				isSplit = true
 			}
+
+			stats := ""
+			if m.cfg.General.ShowDiff {
+				stats = fmt.Sprintf("│ %4d │ %2d │ %+4d │", row.Hits, row.HitPB, row.HitDiff)
+			} else {
+				stats = fmt.Sprintf("│ %4d │ %2d │", row.Hits, row.HitPB)
+			}
+			statsW := lipgloss.Width(stats)
+			if statsW > contentWidth {
+				stats = clipCells(stats, contentWidth)
+				statsW = lipgloss.Width(stats)
+			}
+
+			leftSpace := contentWidth - statsW - 1
+			leftSpace = max(leftSpace, 0)
+
+			leftText := row.Name
+			if isCursor {
+				leftText = sel.Render(styles.CursorGlyph + leftText)
+			}
+
+			leftClipped := clipCells(leftText, leftSpace)
+			leftCell := lipgloss.NewStyle().Width(leftSpace).Render(leftClipped)
+
+			statsText := stats
+			if isCursor {
+				statsText = sel.Render(stats)
+			}
+
+			line := lipgloss.JoinHorizontal(lipgloss.Top, leftCell, " ", statsText)
+			lines = append(lines, lineStyle.Render(line))
+
+		case "run":
+			content := row.Name
+			if isCursor {
+				content = sel.Render(styles.CursorGlyph + content)
+			}
+
+			lines = append(lines, lineStyle.Render(content))
+		default:
+			content := row.Name
+			if isCursor {
+				content = sel.Render(styles.CursorGlyph + content)
+			}
+
+			lines = append(lines, lineStyle.Render(content))
 		}
 	}
+	if isSplit {
+		totals, err := fetching.GetSplitTotalsByRunID(m.db, m.runID)
+		if err != nil {
+			m.err = err
+			return
+		}
+
+		summaryStats := ""
+		if m.cfg.General.ShowDiff {
+			summaryStats = fmt.Sprintf("│ %4d │ %2d │ %+4d │", totals.TotalHits, totals.TotalPB, totals.TotalDiff)
+		} else {
+			summaryStats = fmt.Sprintf("│ %4d │ %2d │", totals.TotalHits, totals.TotalPB)
+		}
+
+		summaryLabels := ""
+		if m.cfg.General.ShowDiff {
+			summaryLabels = fmt.Sprintf("│ %4s │ %2s │ %4s │", "Hits", "PB", "Diff")
+		} else {
+			summaryLabels = fmt.Sprintf("│ %4s │ %2s │", "Hits", "PB")
+		}
+
+		separatorLine := strings.Repeat("─", contentWidth)
+		separatorStyle := lipgloss.NewStyle().Foreground(m.s.Colors.Accent)
+		lines = append(lines, lineStyle.Render(separatorStyle.Render(separatorLine)))
+
+		totalLabel := "Total:"
+		totalLabelW := lipgloss.Width(totalLabel)
+		summaryStatsW := lipgloss.Width(summaryStats)
+		summaryLabelsW := lipgloss.Width(summaryLabels)
+
+		totalLeftSpace := contentWidth - totalLabelW - summaryStatsW
+		totalLeftSpace = max(totalLeftSpace, 0)
+
+		labelsLeftSpace := contentWidth - summaryLabelsW
+		labelsLeftSpace = max(labelsLeftSpace, 0)
+
+		totalSpacer := ""
+		if totalLeftSpace > 0 {
+			totalSpacer = lipgloss.NewStyle().Width(totalLeftSpace).Render("")
+		}
+
+		labelsSpacer := ""
+		if labelsLeftSpace > 0 {
+			labelsSpacer = lipgloss.NewStyle().Width(labelsLeftSpace).Render("")
+		}
+
+		totalLine := lipgloss.JoinHorizontal(lipgloss.Top, totalLabel, totalSpacer, summaryStats)
+		labelsLine := lipgloss.JoinHorizontal(lipgloss.Top, labelsSpacer, summaryLabels)
+
+		highlightStyle := lipgloss.NewStyle().
+			Foreground(m.s.Colors.Highlight).
+			Bold(true)
+
+		lines = append(lines, lineStyle.Render(highlightStyle.Render(totalLine)))
+		lines = append(lines, lineStyle.Render(highlightStyle.Render(labelsLine)))
+	}
+
 	m.vp.SetContent(strings.Join(lines, "\n"))
 }
 
@@ -230,7 +385,6 @@ func (m *model) refreshAfterPicker() {
 		m.runID = r.ID
 		m.runName = r.Name
 		m.buildListWithSplits()
-		m.setCursorToActiveSplit()
 	} else {
 		m.runID = 0
 		m.runName = ""
@@ -528,7 +682,7 @@ func (m model) View() string {
 		return m.err.Error()
 	}
 	if m.quitting {
-		return "erm" + "\n"
+		return "\n"
 	}
 
 	if m.showSelection {
@@ -576,7 +730,6 @@ func (m model) View() string {
 
 	if m.showHelpMenu {
 		helpContent := m.renderHelpMenu()
-		// Center the help menu
 		helpWidth := lipgloss.Width(helpContent)
 		helpHeight := lipgloss.Height(helpContent)
 		x := (m.termW - helpWidth) / 2

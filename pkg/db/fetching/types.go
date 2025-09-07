@@ -22,6 +22,7 @@ type Split struct {
 	Name     string
 	Hits     int
 	PBHits   int
+	Diff     int
 	Idx      int
 	SaveFile sql.NullString
 	IsActive bool

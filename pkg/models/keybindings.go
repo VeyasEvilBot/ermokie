@@ -34,12 +34,23 @@ type KeybindingSet struct {
 
 type KeybindingManager struct {
 	availableSets map[string]KeybindingSet
+	setOrder      []string
 	currentSet    string
+}
+
+func init() {
+	GlobalKeybindingManager.SetKeybindingOrder([]string{
+		"arrow-vim",
+		"default",
+		"arrow-keys",
+		"wasd",
+	})
 }
 
 func NewKeybindingManager() *KeybindingManager {
 	km := &KeybindingManager{
 		availableSets: make(map[string]KeybindingSet),
+		setOrder:      make([]string, 0, 8),
 		currentSet:    "default",
 	}
 
@@ -63,6 +74,7 @@ func NewKeybindingManager() *KeybindingManager {
 			ActionNo:               {"n", "N"},
 		},
 	}
+	km.setOrder = append(km.setOrder, "default")
 
 	km.availableSets["arrow-keys"] = KeybindingSet{
 		Name:        "arrow-keys",
@@ -84,6 +96,7 @@ func NewKeybindingManager() *KeybindingManager {
 			ActionNo:               {"n", "N"},
 		},
 	}
+	km.setOrder = append(km.setOrder, "arrow-keys")
 
 	km.availableSets["wasd"] = KeybindingSet{
 		Name:        "wasd",
@@ -105,6 +118,7 @@ func NewKeybindingManager() *KeybindingManager {
 			ActionNo:               {"n", "N"},
 		},
 	}
+	km.setOrder = append(km.setOrder, "wasd")
 
 	km.availableSets["arrow-vim"] = KeybindingSet{
 		Name:        "arrow-vim",
@@ -126,6 +140,7 @@ func NewKeybindingManager() *KeybindingManager {
 			ActionNo:               {"n", "N"},
 		},
 	}
+	km.setOrder = append(km.setOrder, "arrow-vim")
 
 	km.availableSets["vim-only"] = KeybindingSet{
 		Name:        "vim-only",
@@ -147,6 +162,7 @@ func NewKeybindingManager() *KeybindingManager {
 			ActionNo:               {"n", "N"},
 		},
 	}
+	km.setOrder = append(km.setOrder, "vim-only")
 
 	km.availableSets["fuzzy-picker"] = KeybindingSet{
 		Name:        "fuzzy-picker",
@@ -165,16 +181,64 @@ func NewKeybindingManager() *KeybindingManager {
 			ActionNo:      {"n", "N"},
 		},
 	}
+	km.setOrder = append(km.setOrder, "fuzzy-picker")
 
 	return km
 }
 
 func (km *KeybindingManager) GetAvailableKeybindingSets() []string {
-	sets := make([]string, 0, len(km.availableSets))
-	for name := range km.availableSets {
-		sets = append(sets, name)
+	out := make([]string, len(km.availableSets))
+	copy(out, km.setOrder)
+	return out
+}
+
+func (km *KeybindingManager) SetKeybindingOrder(order []string) {
+	seen := make(map[string]bool, len(order))
+	newOrder := make([]string, 0, len(km.availableSets))
+
+	for _, name := range order {
+		if _, ok := km.availableSets[name]; ok && !seen[name] {
+			newOrder = append(newOrder, name)
+			seen[name] = true
+		}
 	}
-	return sets
+
+	for _, name := range km.setOrder {
+		if !seen[name] {
+			if _, ok := km.availableSets[name]; ok {
+				newOrder = append(newOrder, name)
+				seen[name] = true
+			}
+		}
+	}
+
+	km.setOrder = newOrder
+}
+
+func (km *KeybindingManager) AddKeybindingSet(set KeybindingSet) {
+	_, existed := km.availableSets[set.Name]
+	km.availableSets[set.Name] = set
+	if !existed {
+		km.setOrder = append(km.setOrder, set.Name)
+	}
+}
+
+func (km *KeybindingManager) RemoveKeybindingSet(name string) bool {
+	if name == km.currentSet {
+		return false
+	}
+	if _, ok := km.availableSets[name]; !ok {
+		return false
+	}
+	delete(km.availableSets, name)
+	newOrder := make([]string, 0, len(km.setOrder))
+	for _, n := range km.setOrder {
+		if n != name {
+			newOrder = append(newOrder, n)
+		}
+	}
+	km.setOrder = newOrder
+	return true
 }
 
 func (km *KeybindingManager) GetKeybindingSetDescription(setName string) string {
@@ -237,14 +301,13 @@ func GetCurrentKeymapName() string {
 
 func GetAvailableKeymaps() []string {
 	allKeymaps := GlobalKeybindingManager.GetAvailableKeybindingSets()
-	// Filter out fuzzy-picker as it's only for internal use
-	var filteredKeymaps []string
+	out := make([]string, 0, len(allKeymaps))
 	for _, keymap := range allKeymaps {
 		if keymap != "fuzzy-picker" {
-			filteredKeymaps = append(filteredKeymaps, keymap)
+			out = append(out, keymap)
 		}
 	}
-	return filteredKeymaps
+	return out
 }
 
 func IsValidKeymap(keymapName string) bool {

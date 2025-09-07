@@ -36,6 +36,7 @@ func GetSplitsByRunName(data *sql.DB, runName string) ([]Split, error) {
 		  s.name,
 		  s.hit_count,
 		  s.pb_hit_count,
+		  s.diff,
 		  s.idx,
 		  s.save_file,
 		  (s.idx = r.active_split) AS is_active
@@ -51,7 +52,7 @@ func GetSplitsByRunName(data *sql.DB, runName string) ([]Split, error) {
 		`,
 		func(rows *sql.Rows) (Split, error) {
 			var s Split
-			err := rows.Scan(&s.ID, &s.RunID, &s.Name, &s.Hits, &s.PBHits, &s.Idx, &s.SaveFile, &s.IsActive)
+			err := rows.Scan(&s.ID, &s.RunID, &s.Name, &s.Hits, &s.PBHits, &s.Diff, &s.Idx, &s.SaveFile, &s.IsActive)
 			return s, err
 		},
 		runName,
@@ -66,6 +67,7 @@ func GetSplitsByRunID(data *sql.DB, runID int) ([]Split, error) {
 		  s.name,
 		  s.hit_count,
 		  s.pb_hit_count,
+		  s.diff,
 		  s.idx,
 		  s.save_file,
 		  (s.idx = r.active_split) AS is_active
@@ -81,7 +83,7 @@ func GetSplitsByRunID(data *sql.DB, runID int) ([]Split, error) {
 		`,
 		func(rows *sql.Rows) (Split, error) {
 			var s Split
-			err := rows.Scan(&s.ID, &s.RunID, &s.Name, &s.Hits, &s.PBHits, &s.Idx, &s.SaveFile, &s.IsActive)
+			err := rows.Scan(&s.ID, &s.RunID, &s.Name, &s.Hits, &s.PBHits, &s.Diff, &s.Idx, &s.SaveFile, &s.IsActive)
 			return s, err
 		},
 		runID,
@@ -128,12 +130,12 @@ func GetRunByID(data *sql.DB, runID int) (*Run, error) {
 
 func GetSplitByRunIDAndIdx(data *sql.DB, runID int, splitIdx int) (*Split, error) {
 	results, err := db.QueryRows(data,
-		`SELECT id, run_id, name, hit_count, pb_hit_count, idx, save_file 
+		`SELECT id, run_id, name, hit_count, pb_hit_count, diff, idx, save_file 
 		 FROM splits 
 		 WHERE run_id = ? AND idx = ?`,
 		func(rows *sql.Rows) (Split, error) {
 			var s Split
-			err := rows.Scan(&s.ID, &s.RunID, &s.Name, &s.Hits, &s.PBHits, &s.Idx, &s.SaveFile)
+			err := rows.Scan(&s.ID, &s.RunID, &s.Name, &s.Hits, &s.PBHits, &s.Diff, &s.Idx, &s.SaveFile)
 			return s, err
 		},
 		runID, splitIdx,
@@ -149,13 +151,13 @@ func GetSplitByRunIDAndIdx(data *sql.DB, runID int, splitIdx int) (*Split, error
 
 func GetSplitByRunNameAndIdx(data *sql.DB, runName string, splitIdx int) (*Split, error) {
 	results, err := db.QueryRows(data,
-		`SELECT s.id, s.run_id, s.name, s.hit_count, s.pb_hit_count, s.idx, s.save_file
+		`SELECT s.id, s.run_id, s.name, s.hit_count, s.pb_hit_count, s.diff, s.idx, s.save_file
 		 FROM splits s
 		 JOIN runs r ON s.run_id = r.id
 		 WHERE r.name = ? AND s.idx = ?`,
 		func(rows *sql.Rows) (Split, error) {
 			var s Split
-			err := rows.Scan(&s.ID, &s.RunID, &s.Name, &s.Hits, &s.PBHits, &s.Idx, &s.SaveFile)
+			err := rows.Scan(&s.ID, &s.RunID, &s.Name, &s.Hits, &s.PBHits, &s.Diff, &s.Idx, &s.SaveFile)
 			return s, err
 		},
 		runName, splitIdx,
@@ -229,12 +231,12 @@ func GetRunIDByName(data *sql.DB, runName string) (int, error) {
 
 func GetSplitByID(data *sql.DB, splitID int) (*Split, error) {
 	results, err := db.QueryRows(data,
-		`SELECT id, run_id, name, hit_count, pb_hit_count, idx, save_file 
+		`SELECT id, run_id, name, hit_count, pb_hit_count, diff, idx, save_file 
 		 FROM splits 
 		 WHERE id = ?`,
 		func(rows *sql.Rows) (Split, error) {
 			var s Split
-			err := rows.Scan(&s.ID, &s.RunID, &s.Name, &s.Hits, &s.PBHits, &s.Idx, &s.SaveFile)
+			err := rows.Scan(&s.ID, &s.RunID, &s.Name, &s.Hits, &s.PBHits, &s.Diff, &s.Idx, &s.SaveFile)
 			return s, err
 		},
 		splitID,
@@ -244,6 +246,36 @@ func GetSplitByID(data *sql.DB, splitID int) (*Split, error) {
 	}
 	if len(results) == 0 {
 		return nil, sql.ErrNoRows
+	}
+	return &results[0], nil
+}
+
+type SplitTotals struct {
+	TotalHits int
+	TotalPB   int
+	TotalDiff int
+}
+
+func GetSplitTotalsByRunID(data *sql.DB, runID int) (*SplitTotals, error) {
+	results, err := db.QueryRows(data,
+		`SELECT 
+			SUM(hit_count) as total_hits,
+			SUM(pb_hit_count) as total_pb,
+			SUM(diff) as total_diff
+		FROM splits 
+		WHERE run_id = ?`,
+		func(rows *sql.Rows) (SplitTotals, error) {
+			var t SplitTotals
+			err := rows.Scan(&t.TotalHits, &t.TotalPB, &t.TotalDiff)
+			return t, err
+		},
+		runID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return &SplitTotals{0, 0, 0}, nil
 	}
 	return &results[0], nil
 }

@@ -117,7 +117,6 @@ func (m *screenList) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.s = m.themeManager.ApplyTheme(themeName, m.s)
 					m.refreshUI()
 				} else if m.isKeymapSelection && len(m.options) > 0 {
-					// Apply keymap immediately when moving cursor
 					keymapName := m.options[m.cursor]
 					models.LoadKeymapFromConfig(keymapName)
 					m.rebuildList()
@@ -134,7 +133,6 @@ func (m *screenList) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.s = m.themeManager.ApplyTheme(val, m.s)
 					m.refreshUI()
 				} else if m.isKeymapSelection {
-					// Apply keymap on confirmation
 					models.LoadKeymapFromConfig(val)
 				}
 				return m, func() tea.Msg { return StepResult{Value: val} }

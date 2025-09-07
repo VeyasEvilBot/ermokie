@@ -3,7 +3,6 @@ package models
 import (
 	"database/sql"
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 
@@ -37,30 +36,6 @@ type fuzzyFinder struct {
 	styles         styles.Styles
 	fromMainScreen bool
 	db             *sql.DB
-}
-
-func newFuzzyFinder(data []string, multiMode bool, title string) (*fuzzyFinder, error) {
-	ti := textinput.New()
-	ti.Prompt = styles.CursorGlyph
-	ti.Focus()
-
-	vp := viewport.New(0, 20)
-	vp.Style = lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder())
-
-	f := &fuzzyFinder{
-		title:     title,
-		viewport:  vp,
-		rows:      data,
-		cursor:    0,
-		input:     ti,
-		termW:     0,
-		termH:     0,
-		boxW:      0,
-		multiMode: multiMode,
-		styles:    styles.DefaultStyles(),
-	}
-	return f, nil
 }
 
 func newFuzzyFinderWithTheme(data []string, multiMode bool, themeStyles styles.Styles, title string) (*fuzzyFinder, error) {
@@ -197,7 +172,6 @@ func (f *fuzzyFinder) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return f, func() tea.Msg { return cancelPickerMsg{} }
 
 		case "up":
-			// Move within the currently shown list (filtered or full)
 			var maxIdx int
 			if f.liveValue == "" {
 				maxIdx = len(f.rows) - 1
@@ -338,27 +312,6 @@ func deduplicate(slice []string) []string {
 		}
 	}
 
-	return result
-}
-
-func NewFuzzyFinder(input []string, multiMode bool, title string) []string {
-	var result []string
-	model, err := newFuzzyFinder(input, multiMode, title)
-
-	if err != nil {
-		fmt.Println("Could not initialize Bubble Tea model:", err)
-		os.Exit(1)
-	}
-
-	a, err := tea.NewProgram(model).Run()
-	if err != nil {
-		fmt.Println("Bummer, there's been an error:", err)
-		os.Exit(1)
-	}
-
-	final := a.(*fuzzyFinder)
-
-	result = deduplicate(final.selection)
 	return result
 }
 

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"database/sql"
 	"encoding/xml"
-	"fmt"
 	"os"
 	"strings"
 	"unicode"
@@ -95,8 +94,6 @@ func ImportProfiles(db *sql.DB, profiles Profiles) error {
 		if err != nil {
 			return err
 		}
-
-		fmt.Println("Importing profile:", profile.Name)
 
 		runID, _ := res.LastInsertId()
 

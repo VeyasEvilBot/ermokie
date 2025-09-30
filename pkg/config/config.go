@@ -152,7 +152,6 @@ func GetDataDirWithFallback(appName string) (string, error) {
 		return globalDataDir, nil
 	}
 
-	// Try to get data dir from config first
 	if cfg, err := LoadConfig(); err == nil && cfg.General.DataDir != "" {
 		dir := cfg.General.DataDir
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -161,7 +160,6 @@ func GetDataDirWithFallback(appName string) (string, error) {
 		return dir, nil
 	}
 
-	// Fallback to default data directory
 	return EnsureUserDataDir(appName)
 }
 

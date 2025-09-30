@@ -8,8 +8,8 @@ import (
 	"log"
 	"path/filepath"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/stefanistkuhl/ermokie/pkg/config"
+	_ "modernc.org/sqlite"
 )
 
 //go:embed schemas/schema.sql
@@ -20,7 +20,7 @@ func Init() *sql.DB {
 	dbPath := filepath.Join(dataDir, "app.db")
 	dsn := fmt.Sprintf("file:%s?_foreign_keys=on&_busy_timeout=5000&_journal_mode=WAL", dbPath)
 
-	db, err := sql.Open("sqlite3", dsn)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		log.Fatal("Failed to open database:", err)
 	}

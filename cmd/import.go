@@ -17,9 +17,13 @@ var importCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		filename := args[0]
 
-		database := db.Init()
+		store, getDBErr := db.Init()
+		if getDBErr != nil {
+			fmt.Printf("Error getting database: %v\n", getDBErr)
+			os.Exit(1)
+		}
 
-		if !db.CheckEmpty(database) {
+		if !db.CheckEmpty(store.DB) {
 			fmt.Println("Database already contains data. Skipping import.")
 			return
 		}
@@ -30,7 +34,7 @@ var importCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		err = hcmmigration.ImportProfiles(database, profiles)
+		err = hcmmigration.ImportProfiles(store, profiles)
 		if err != nil {
 			fmt.Printf("Error importing profiles: %v\n", err)
 			os.Exit(1)

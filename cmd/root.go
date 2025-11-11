@@ -10,12 +10,12 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stefanistkuhl/ermokie/pkg/config"
 	"github.com/stefanistkuhl/ermokie/pkg/db"
-	"github.com/stefanistkuhl/ermokie/pkg/db/fetching"
 	hcmmigration "github.com/stefanistkuhl/ermokie/pkg/hcmMigration"
 	"github.com/stefanistkuhl/ermokie/pkg/models"
 	"github.com/stefanistkuhl/ermokie/pkg/models/setup"
 	"github.com/stefanistkuhl/ermokie/pkg/models/styles"
 	"github.com/stefanistkuhl/ermokie/pkg/presets"
+	"github.com/stefanistkuhl/ermokie/pkg/types"
 )
 
 var launchSetup bool = false
@@ -89,12 +89,15 @@ var rootCmd = &cobra.Command{
 							xmlFile := models.NewFilePickerWithTheme(currentStyles)
 							if xmlFile == "" {
 							} else {
-								data := db.Init()
+								store, err := db.Init()
+								if err != nil {
+									log.Fatalf("Failed to initialize the database %s", err)
+								}
 								profiles, err := hcmmigration.LoadProfiles(xmlFile)
 								if err != nil {
 									log.Fatalf("Failed to convert the XML file to Hit Counter Manager Profiles %s", err)
 								}
-								insertErr := hcmmigration.ImportProfiles(data, profiles)
+								insertErr := hcmmigration.ImportProfiles(store, profiles)
 								if insertErr != nil {
 									log.Fatalf("Failed to insert the Hit Counter Manager Profiles into the DB %s", insertErr)
 								}
@@ -128,9 +131,12 @@ var rootCmd = &cobra.Command{
 							}
 						}
 
-						data := db.Init()
+						store, getDbErr := db.Init()
+						if getDbErr != nil {
+							log.Fatalf("Failed to initialize the database %s", err)
+						}
 						cat := presets.NewPresets()
-						var runs []fetching.RunCreate
+						var runs []types.RunCreate
 						for _, preset := range toImport {
 							run, ok := presets.PresetToRunType(preset, cat)
 							if !ok {
@@ -139,7 +145,7 @@ var rootCmd = &cobra.Command{
 							runs = append(runs, run)
 						}
 
-						err := presets.ImportPresets(data, runs)
+						err := presets.ImportPresets(store, runs)
 						if err != nil {
 							log.Fatal(err)
 						}
@@ -187,8 +193,11 @@ var rootCmd = &cobra.Command{
 				theme = cfg.Theme.App.Name
 			}
 			styles := themeManager.ApplyTheme(theme, styles.DefaultStyles())
-			data := db.Init()
-			models.NewMainScreen(styles, data)
+			store, getDbErr := db.Init()
+			if getDbErr != nil {
+				log.Fatalf("Failed to initialize the database %s", err)
+			}
+			models.NewMainScreen(styles, store)
 		}
 
 		return nil

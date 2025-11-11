@@ -1,13 +1,14 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/stefanistkuhl/ermokie/pkg/db"
-	"github.com/stefanistkuhl/ermokie/pkg/db/fetching"
+	"github.com/stefanistkuhl/ermokie/pkg/types"
 	"github.com/stefanistkuhl/ermokie/pkg/utils"
 )
 
@@ -25,32 +26,53 @@ var searchRunsCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		rawFlag, _ := cmd.Flags().GetBool("raw")
 		query := strings.ToLower(args[0])
-		database := db.Init()
+		store, getDBErr := db.Init()
+		if getDBErr != nil {
+			fmt.Printf("Error getting database: %v\n", getDBErr)
+			os.Exit(1)
+		}
 
-		// Get all runs and filter them
-		allRuns, err := fetching.GetAllRuns(database)
+		allRuns, err := store.GetAllRuns(context.Background())
 		if err != nil {
 			fmt.Printf("Error getting runs: %v\n", err)
 			os.Exit(1)
 		}
 
-		var filteredRuns []fetching.Run
+		var filteredRuns []types.Run
 		for _, run := range allRuns {
-			// Check if query matches name (case-insensitive)
 			if strings.Contains(strings.ToLower(run.Name), query) {
-				filteredRuns = append(filteredRuns, run)
+				filteredRuns = append(filteredRuns, types.Run{
+					ID:          int(run.ID),
+					Name:        run.Name,
+					Game:        run.Game,
+					Category:    run.Category,
+					Attempts:    int(run.Attempts.Int64),
+					ActiveSplit: int(run.ActiveSplit.Int64),
+				})
 				continue
 			}
 
-			// Check if query matches game (case-insensitive)
 			if run.Game.Valid && strings.Contains(strings.ToLower(run.Game.String), query) {
-				filteredRuns = append(filteredRuns, run)
+				filteredRuns = append(filteredRuns, types.Run{
+					ID:          int(run.ID),
+					Name:        run.Name,
+					Game:        run.Game,
+					Category:    run.Category,
+					Attempts:    int(run.Attempts.Int64),
+					ActiveSplit: int(run.ActiveSplit.Int64),
+				})
 				continue
 			}
 
-			// Check if query matches category (case-insensitive)
 			if run.Category.Valid && strings.Contains(strings.ToLower(run.Category.String), query) {
-				filteredRuns = append(filteredRuns, run)
+				filteredRuns = append(filteredRuns, types.Run{
+					ID:          int(run.ID),
+					Name:        run.Name,
+					Game:        run.Game,
+					Category:    run.Category,
+					Attempts:    int(run.Attempts.Int64),
+					ActiveSplit: int(run.ActiveSplit.Int64),
+				})
 				continue
 			}
 		}
@@ -60,17 +82,15 @@ var searchRunsCmd = &cobra.Command{
 			return
 		}
 
-		// Check for --raw flag first
 		utils.PrintRawJSON(filteredRuns, rawFlag)
 
 		fmt.Printf("Found %d runs matching '%s':\n\n", len(filteredRuns), query)
 
-		// Calculate column widths for the filtered results table
-		maxID := 2       // "ID" header
-		maxName := 4     // "Name" header
-		maxGame := 4     // "Game" header
-		maxCategory := 8 // "Category" header
-		maxAttempts := 8 // "Attempts" header
+		maxID := 2
+		maxName := 4
+		maxGame := 4
+		maxCategory := 8
+		maxAttempts := 8
 
 		for _, run := range filteredRuns {
 			idLen := len(fmt.Sprintf("%d", run.ID))
@@ -100,16 +120,13 @@ var searchRunsCmd = &cobra.Command{
 			}
 		}
 
-		// Print table header
 		fmt.Printf("%-*s  %-*s  %-*s  %-*s  %-*s\n",
 			maxID, "ID", maxName, "Name", maxGame, "Game", maxCategory, "Category", maxAttempts, "Attempts")
 
-		// Print separator line
 		separator := strings.Repeat("-", maxID) + "  " + strings.Repeat("-", maxName) + "  " +
 			strings.Repeat("-", maxGame) + "  " + strings.Repeat("-", maxCategory) + "  " + strings.Repeat("-", maxAttempts)
 		fmt.Println(separator)
 
-		// Print filtered results
 		for _, run := range filteredRuns {
 			game := "N/A"
 			if run.Game.Valid {
@@ -126,7 +143,6 @@ var searchRunsCmd = &cobra.Command{
 }
 
 func init() {
-	// Add --raw flag
 	searchRunsCmd.Flags().BoolP("raw", "r", false, "Output raw JSON data")
 
 	searchCmd.AddCommand(searchRunsCmd)

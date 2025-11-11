@@ -1,14 +1,16 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/stefanistkuhl/ermokie/pkg/db"
-	"github.com/stefanistkuhl/ermokie/pkg/db/fetching"
+	"github.com/stefanistkuhl/ermokie/pkg/db/sqlc"
 	"github.com/stefanistkuhl/ermokie/pkg/utils"
 )
 
@@ -18,15 +20,22 @@ var showCmd = &cobra.Command{
 	Long:  `Show detailed information about various entities.`,
 }
 
+type Run = sqlc.GetRunByIDRow
+type Split = sqlc.GetSplitsByRunIDRow
+
 var showRunsCmd = &cobra.Command{
 	Use:   "runs",
 	Short: "Show all runs",
 	Long:  `Show all runs stored in the database.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		rawFlag, _ := cmd.Flags().GetBool("raw")
-		database := db.Init()
+		store, getDbErr := db.Init()
+		if getDbErr != nil {
+			fmt.Printf("Failed to initialize the database %s", getDbErr)
+			return
+		}
 
-		runs, err := fetching.GetAllRuns(database)
+		runs, err := store.GetAllRuns(context.Background())
 		if err != nil {
 			fmt.Printf("Error getting runs: %v\n", err)
 			os.Exit(1)
@@ -37,15 +46,13 @@ var showRunsCmd = &cobra.Command{
 			return
 		}
 
-		// Check for --raw flag first
 		utils.PrintRawJSON(runs, rawFlag)
 
-		// Calculate column widths
-		maxID := 2       // "ID" header
-		maxName := 4     // "Name" header
-		maxGame := 4     // "Game" header
-		maxCategory := 8 // "Category" header
-		maxAttempts := 8 // "Attempts" header
+		maxID := 2
+		maxName := 4
+		maxGame := 4
+		maxCategory := 8
+		maxAttempts := 8
 
 		for _, run := range runs {
 			idLen := len(fmt.Sprintf("%d", run.ID))
@@ -102,38 +109,41 @@ var showRunCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		rawFlag, _ := cmd.Flags().GetBool("raw")
 		runArg := args[0]
-		database := db.Init()
+		store, getDbErr := db.Init()
+		if getDbErr != nil {
+			fmt.Printf("Failed to initialize the database %s", getDbErr)
+			return
+		}
 
-		var run *fetching.Run
-		var err error
+		var run Run
 
-		// Try to parse as ID first, then as name
-		if runID, parseErr := strconv.Atoi(runArg); parseErr == nil {
-			// It's a numeric ID
-			run, err = fetching.GetRunByID(database, runID)
+		runID, parseErr := strconv.Atoi(runArg)
+		if parseErr == nil {
+			runTmp, err := store.GetRunByID(context.Background(), int64(runID))
+			if err != nil {
+				fmt.Printf("Error getting run info: %v\n", err)
+				os.Exit(1)
+			}
+			run = runTmp
 		} else {
-			// It's a name
-			run, err = fetching.GetRunByName(database, runArg)
+			runTmp, err := store.GetRunByName(context.Background(), runArg)
+			if err != nil {
+				fmt.Printf("Error getting run info: %v\n", err)
+				os.Exit(1)
+			}
+			run = Run(runTmp)
 		}
 
-		if err != nil {
-			fmt.Printf("Error getting run info: %v\n", err)
-			os.Exit(1)
-		}
-
-		// Get splits for this run
-		splits, err := fetching.GetSplitsByRunID(database, run.ID)
+		splits, err := store.GetSplitsByRunID(context.Background(), run.ID)
 		if err != nil {
 			fmt.Printf("Error getting splits: %v\n", err)
 			os.Exit(1)
 		}
 
-		// Check for --raw flag first
 		if rawFlag {
-			// Create a combined structure for raw output
 			runWithSplits := struct {
-				Run    *fetching.Run    `json:"run"`
-				Splits []fetching.Split `json:"splits"`
+				Run    Run     `json:"run"`
+				Splits []Split `json:"splits"`
 			}{
 				Run:    run,
 				Splits: splits,
@@ -141,7 +151,6 @@ var showRunCmd = &cobra.Command{
 			utils.PrintRawJSON(runWithSplits, rawFlag)
 		}
 
-		// Display run information
 		fmt.Println("=== Run Information ===")
 		fmt.Printf("ID: %d\n", run.ID)
 		fmt.Printf("Name: %s\n", run.Name)
@@ -162,15 +171,14 @@ var showRunCmd = &cobra.Command{
 		fmt.Printf("Active Split: %d\n", run.ActiveSplit)
 		fmt.Printf("Total Splits: %d\n\n", len(splits))
 
-		// Display splits summary
 		if len(splits) > 0 {
 			fmt.Println("=== Splits Summary ===")
 			totalHits := 0
 			totalPBHits := 0
 
 			for _, split := range splits {
-				totalHits += split.Hits
-				totalPBHits += split.PBHits
+				totalHits += int(split.HitCount.Int64)
+				totalPBHits += int(split.PbHitCount.Int64)
 			}
 
 			fmt.Printf("Total Hits: %d\n", totalHits)
@@ -200,34 +208,44 @@ var showSplitsCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		rawFlag, _ := cmd.Flags().GetBool("raw")
 		runArg := args[0]
-		database := db.Init()
-
-		var splits []fetching.Split
-		var run *fetching.Run
-		var err error
-
-		// Try to parse as ID first, then as name
-		if runID, parseErr := strconv.Atoi(runArg); parseErr == nil {
-			// It's a numeric ID
-			splits, err = fetching.GetSplitsByRunID(database, runID)
-			if err != nil {
-				fmt.Printf("Error getting splits: %v\n", err)
-				os.Exit(1)
-			}
-			run, err = fetching.GetRunByID(database, runID)
-		} else {
-			// It's a name
-			splits, err = fetching.GetSplitsByRunName(database, runArg)
-			if err != nil {
-				fmt.Printf("Error getting splits: %v\n", err)
-				os.Exit(1)
-			}
-			run, err = fetching.GetRunByName(database, runArg)
+		store, getDbErr := db.Init()
+		if getDbErr != nil {
+			fmt.Printf("Failed to initialize the database %s", getDbErr)
+			return
 		}
 
-		if err != nil {
-			fmt.Printf("Error getting run info: %v\n", err)
-			os.Exit(1)
+		var splits []Split
+		var run Run
+
+		runID, parseErr := strconv.Atoi(runArg)
+		if parseErr == nil {
+			splitsTmp, err := store.GetSplitsByRunID(context.Background(), int64(runID))
+			if err != nil {
+				fmt.Printf("Error getting splits: %v\n", err)
+				os.Exit(1)
+			}
+			splits = splitsTmp
+			runTmp, err := store.GetRunByID(context.Background(), int64(runID))
+			if err != nil {
+				fmt.Printf("Error getting run info: %v\n", err)
+				os.Exit(1)
+			}
+			run = runTmp
+		} else {
+			splitsTmp, err := store.GetSplitsByRunName(context.Background(), runArg)
+			if err != nil {
+				fmt.Printf("Error getting splits: %v\n", err)
+				os.Exit(1)
+			}
+			for _, split := range splitsTmp {
+				splits = append(splits, Split(split))
+			}
+			runTmp, err := store.GetRunByName(context.Background(), runArg)
+			if err != nil {
+				fmt.Printf("Error getting run info: %v\n", err)
+				os.Exit(1)
+			}
+			run = Run(runTmp)
 		}
 
 		if len(splits) == 0 {
@@ -235,12 +253,10 @@ var showSplitsCmd = &cobra.Command{
 			return
 		}
 
-		// Check for --raw flag first
 		if rawFlag {
-			// Create a combined structure for raw output
 			runWithSplits := struct {
-				Run    *fetching.Run    `json:"run"`
-				Splits []fetching.Split `json:"splits"`
+				Run    Run     `json:"run"`
+				Splits []Split `json:"splits"`
 			}{
 				Run:    run,
 				Splits: splits,
@@ -248,7 +264,6 @@ var showSplitsCmd = &cobra.Command{
 			utils.PrintRawJSON(runWithSplits, rawFlag)
 		}
 
-		// Display run information
 		fmt.Printf("Run: %s\n", run.Name)
 		if run.Game.Valid {
 			fmt.Printf("Game: %s\n", run.Game.String)
@@ -260,13 +275,12 @@ var showSplitsCmd = &cobra.Command{
 		fmt.Printf("Active Split: %d\n", run.ActiveSplit)
 		fmt.Printf("Total Splits: %d\n\n", len(splits))
 
-		// Calculate column widths for splits table
-		maxIdx := 3      // "Idx" header
-		maxName := 4     // "Name" header
-		maxHits := 4     // "Hits" header
-		maxPBHits := 7   // "PB Hits" header
-		maxSaveFile := 9 // "Save File" header
-		maxActive := 6   // "Active" header
+		maxIdx := 3
+		maxName := 4
+		maxHits := 4
+		maxPBHits := 7
+		maxSaveFile := 9
+		maxActive := 6
 
 		for _, split := range splits {
 			if len(fmt.Sprintf("%d", split.Idx)) > maxIdx {
@@ -275,11 +289,11 @@ var showSplitsCmd = &cobra.Command{
 			if len(split.Name) > maxName {
 				maxName = len(split.Name)
 			}
-			if len(fmt.Sprintf("%d", split.Hits)) > maxHits {
-				maxHits = len(fmt.Sprintf("%d", split.Hits))
+			if len(fmt.Sprintf("%d", split.HitCount)) > maxHits {
+				maxHits = len(fmt.Sprintf("%d", split.HitCount))
 			}
-			if len(fmt.Sprintf("%d", split.PBHits)) > maxPBHits {
-				maxPBHits = len(fmt.Sprintf("%d", split.PBHits))
+			if len(fmt.Sprintf("%d", split.PbHitCount.Int64)) > maxPBHits {
+				maxPBHits = len(fmt.Sprintf("%d", split.PbHitCount.Int64))
 			}
 			saveFile := "N/A"
 			if split.SaveFile.Valid {
@@ -290,27 +304,25 @@ var showSplitsCmd = &cobra.Command{
 			}
 		}
 
-		// Print splits table header
 		fmt.Printf("%-*s  %-*s  %-*s  %-*s  %-*s  %-*s\n",
 			maxIdx, "Idx", maxName, "Name", maxHits, "Hits", maxPBHits, "PB Hits", maxSaveFile, "Save File", maxActive, "Active")
 
-		// Print separator line
 		separator := strings.Repeat("-", maxIdx) + "  " + strings.Repeat("-", maxName) + "  " +
 			strings.Repeat("-", maxHits) + "  " + strings.Repeat("-", maxPBHits) + "  " + strings.Repeat("-", maxSaveFile) + "  " + strings.Repeat("-", maxActive)
 		fmt.Println(separator)
 
-		// Print splits data
 		for _, split := range splits {
 			saveFile := "N/A"
 			if split.SaveFile.Valid {
 				saveFile = split.SaveFile.String
 			}
 			active := "No"
-			if split.IsActive {
+			isActive := reflect.ValueOf(split.IsActive).Bool()
+			if isActive {
 				active = "Yes"
 			}
 			fmt.Printf("%-*d  %-*s  %-*d  %-*d  %-*s  %-*s\n",
-				maxIdx, split.Idx, maxName, split.Name, maxHits, split.Hits, maxPBHits, split.PBHits, maxSaveFile, saveFile, maxActive, active)
+				maxIdx, split.Idx, maxName, split.Name, maxHits, split.HitCount.Int64, maxPBHits, split.PbHitCount.Int64, maxSaveFile, saveFile, maxActive, active)
 		}
 	},
 }
@@ -324,34 +336,48 @@ var showSplitCmd = &cobra.Command{
 		rawFlag, _ := cmd.Flags().GetBool("raw")
 		runArg := args[0]
 		splitIdx, _ := strconv.Atoi(args[1])
-		database := db.Init()
+		store, getDbErr := db.Init()
+		if getDbErr != nil {
+			fmt.Printf("Failed to initialize the database %s", getDbErr)
+			return
+		}
 
-		var split *fetching.Split
-		var run *fetching.Run
-		var err error
+		var split sqlc.Split
+		var run Run
 
-		// Try to parse as ID first, then as name
-		if runID, parseErr := strconv.Atoi(runArg); parseErr == nil {
-			// It's a numeric ID
-			split, err = fetching.GetSplitByRunIDAndIdx(database, runID, splitIdx)
-			run, err = fetching.GetRunByID(database, runID)
+		runID, parseErr := strconv.Atoi(runArg)
+		if parseErr == nil {
+			var err error
+			split, err = store.GetSplitByRunIDAndIdx(context.Background(), sqlc.GetSplitByRunIDAndIdxParams{RunID: int64(runID), Idx: int64(splitIdx)})
+			if err != nil {
+				fmt.Printf("Error getting split info: %v\n", err)
+				os.Exit(1)
+			}
+			runTmp, err := store.GetRunByID(context.Background(), int64(runID))
+			if err != nil {
+				fmt.Printf("Error getting run info: %v\n", err)
+				os.Exit(1)
+			}
+			run = Run(runTmp)
 		} else {
-			// It's a name
-			split, err = fetching.GetSplitByRunNameAndIdx(database, runArg, splitIdx)
-			run, err = fetching.GetRunByName(database, runArg)
+			var err error
+			split, err = store.GetSplitByRunNameAndIdx(context.Background(), sqlc.GetSplitByRunNameAndIdxParams{Name: runArg, Idx: int64(splitIdx)})
+			if err != nil {
+				fmt.Printf("Error getting split info: %v\n", err)
+				os.Exit(1)
+			}
+			runTmp, err := store.GetRunByName(context.Background(), runArg)
+			if err != nil {
+				fmt.Printf("Error getting run info: %v\n", err)
+				os.Exit(1)
+			}
+			run = Run(runTmp)
 		}
 
-		if err != nil {
-			fmt.Printf("Error getting split info: %v\n", err)
-			os.Exit(1)
-		}
-
-		// Check for --raw flag first
 		if rawFlag {
-			// Create a combined structure for raw output
 			splitWithRun := struct {
-				Run   *fetching.Run   `json:"run"`
-				Split *fetching.Split `json:"split"`
+				Run   Run        `json:"run"`
+				Split sqlc.Split `json:"split"`
 			}{
 				Run:   run,
 				Split: split,
@@ -359,7 +385,6 @@ var showSplitCmd = &cobra.Command{
 			utils.PrintRawJSON(splitWithRun, rawFlag)
 		}
 
-		// Display split information
 		fmt.Printf("Run: %s\n", run.Name)
 		if run.Game.Valid {
 			fmt.Printf("Game: %s\n", run.Game.String)
@@ -371,14 +396,14 @@ var showSplitCmd = &cobra.Command{
 		fmt.Printf("Active Split: %d\n", run.ActiveSplit)
 		fmt.Printf("Split Index: %d\n", split.Idx)
 		fmt.Printf("Split Name: %s\n", split.Name)
-		fmt.Printf("Hits: %d\n", split.Hits)
-		fmt.Printf("PB Hits: %d\n", split.PBHits)
+		fmt.Printf("Hits: %d\n", split.HitCount.Int64)
+		fmt.Printf("PB Hits: %d\n", split.PbHitCount.Int64)
 		fmt.Printf("Active: %s\n", func() string {
-			if split.IsActive {
+			if run.ActiveSplit.Int64 == split.Idx {
 				return "Yes"
 			}
 			return "No"
-		}())
+		})
 
 		if split.SaveFile.Valid {
 			fmt.Printf("Save File: %s\n", split.SaveFile.String)
@@ -389,7 +414,6 @@ var showSplitCmd = &cobra.Command{
 }
 
 func init() {
-	// Add --raw flag to all commands
 	showRunsCmd.Flags().BoolP("raw", "r", false, "Output raw JSON data")
 	showRunCmd.Flags().BoolP("raw", "r", false, "Output raw JSON data")
 	showSplitsCmd.Flags().BoolP("raw", "r", false, "Output raw JSON data")

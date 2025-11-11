@@ -1,10 +1,13 @@
 package presets
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
-	"github.com/stefanistkuhl/ermokie/pkg/db/fetching"
+	"github.com/stefanistkuhl/ermokie/pkg/db"
+	"github.com/stefanistkuhl/ermokie/pkg/db/sqlc"
+	"github.com/stefanistkuhl/ermokie/pkg/types"
 )
 
 type Preset struct {
@@ -72,8 +75,8 @@ func GetPresetByName(runName string) Preset {
 	return p
 }
 
-func PresetToRunType(toImport Preset, presets []Preset) (fetching.RunCreate, bool) {
-	var run fetching.RunCreate
+func PresetToRunType(toImport Preset, presets []Preset) (types.RunCreate, bool) {
+	var run types.RunCreate
 	for _, preset := range presets {
 		if preset.Game == toImport.Game &&
 			preset.Category == toImport.Category &&
@@ -84,7 +87,7 @@ func PresetToRunType(toImport Preset, presets []Preset) (fetching.RunCreate, boo
 			run.Attempts = 0
 			run.ActiveSplit = 0
 			for i, split := range preset.Splits {
-				var splitCreate fetching.SplitCreate
+				var splitCreate types.SplitCreate
 				splitCreate.Name = split
 				splitCreate.Hits = 0
 				splitCreate.PBHits = 0
@@ -99,8 +102,8 @@ func PresetToRunType(toImport Preset, presets []Preset) (fetching.RunCreate, boo
 	return run, false
 }
 
-func ImportPresets(db *sql.DB, runs []fetching.RunCreate) error {
-	tx, err := db.Begin()
+func ImportPresets(s *db.Store, runs []types.RunCreate) error {
+	tx, err := s.DB.BeginTx(context.Background(), &sql.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -112,20 +115,28 @@ func ImportPresets(db *sql.DB, runs []fetching.RunCreate) error {
 	}()
 
 	for _, run := range runs {
-		res, err := tx.Exec(
-			"INSERT INTO runs (name, attempts, active_split, game, category) VALUES (?, ?, ?, ?, ?)",
-			run.Name, run.Attempts, run.ActiveSplit, run.Game, run.Category)
+		insRun := sqlc.InsertRunParams{
+			Name:        run.Name,
+			Attempts:    sql.NullInt64{Int64: int64(run.Attempts), Valid: true},
+			ActiveSplit: sql.NullInt64{Int64: int64(run.ActiveSplit), Valid: true},
+			Game:        run.Game,
+			Category:    run.Category,
+		}
+		runID, err := s.Queries.InsertRun(context.Background(), insRun)
 		if err != nil {
 			return err
 		}
 
-		runID, _ := res.LastInsertId()
-
 		for idx, split := range run.Splits {
-			_, err := tx.Exec(
-				"INSERT INTO splits (run_id, name, hit_count, pb_hit_count, idx, save_file) VALUES (?, ?, ?, ?, ?, ?)",
-				runID, split.Name, split.Hits, split.PBHits, idx+1, split.SaveFile,
-			)
+			splitIns := sqlc.InsertSplitParams{
+				RunID:      runID,
+				Name:       split.Name,
+				HitCount:   sql.NullInt64{Int64: int64(split.Hits), Valid: true},
+				PbHitCount: sql.NullInt64{Int64: int64(split.PBHits), Valid: true},
+				Idx:        int64(idx + 1),
+				SaveFile:   split.SaveFile,
+			}
+			err := s.Queries.InsertSplit(context.Background(), splitIns)
 			if err != nil {
 				return err
 			}

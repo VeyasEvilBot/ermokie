@@ -1,6 +1,23 @@
-package fetching
+package types
 
 import "database/sql"
+
+type RunCreate struct {
+	Name        string
+	Game        sql.NullString
+	Category    sql.NullString
+	Attempts    int
+	ActiveSplit int
+	Splits      []SplitCreate
+}
+
+type SplitCreate struct {
+	Name     string
+	Hits     int
+	PBHits   int
+	Idx      int
+	SaveFile sql.NullString
+}
 
 type Run struct {
 	ID          int
@@ -26,21 +43,4 @@ type Split struct {
 	Idx      int
 	SaveFile sql.NullString
 	IsActive bool
-}
-
-type RunCreate struct {
-	Name        string
-	Game        sql.NullString
-	Category    sql.NullString
-	Attempts    int
-	ActiveSplit int
-	Splits      []SplitCreate
-}
-
-type SplitCreate struct {
-	Name     string
-	Hits     int
-	PBHits   int
-	Idx      int
-	SaveFile sql.NullString
 }

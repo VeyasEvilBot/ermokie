@@ -1,7 +1,6 @@
 package models
 
 import (
-	"database/sql"
 	"fmt"
 	"slices"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sahilm/fuzzy"
+	"github.com/stefanistkuhl/ermokie/pkg/db"
 	"github.com/stefanistkuhl/ermokie/pkg/models/styles"
 )
 
@@ -35,14 +35,14 @@ type fuzzyFinder struct {
 	selection      []string
 	styles         styles.Styles
 	fromMainScreen bool
-	db             *sql.DB
+	db             *db.Store
 }
 
 func newFuzzyFinderWithTheme(data []string, multiMode bool, themeStyles styles.Styles, title string) (*fuzzyFinder, error) {
 	return newFuzzyFinderWithThemeAndFlag(data, multiMode, themeStyles, title, false, nil)
 }
 
-func newFuzzyFinderWithThemeAndFlag(data []string, multiMode bool, themeStyles styles.Styles, title string, fromMainScreen bool, db *sql.DB) (*fuzzyFinder, error) {
+func newFuzzyFinderWithThemeAndFlag(data []string, multiMode bool, themeStyles styles.Styles, title string, fromMainScreen bool, db *db.Store) (*fuzzyFinder, error) {
 	ti := textinput.New()
 	ti.Prompt = styles.CursorGlyph
 	ti.Focus()
@@ -325,7 +325,7 @@ func NewFuzzyFinderWithThemeAndFlag(
 	themeStyles styles.Styles,
 	title string,
 	fromMainScreen bool,
-	db *sql.DB,
+	db *db.Store,
 ) []string {
 	var result []string
 	model, err := newFuzzyFinderWithThemeAndFlag(

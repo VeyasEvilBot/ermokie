@@ -1,6 +1,7 @@
 package models
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -13,9 +14,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/reflow/truncate"
 	"github.com/stefanistkuhl/ermokie/pkg/config"
-	"github.com/stefanistkuhl/ermokie/pkg/db/fetching"
-	"github.com/stefanistkuhl/ermokie/pkg/db/updating"
+	"github.com/stefanistkuhl/ermokie/pkg/db"
+	"github.com/stefanistkuhl/ermokie/pkg/db/sqlc"
 	"github.com/stefanistkuhl/ermokie/pkg/models/styles"
+	"github.com/stefanistkuhl/ermokie/pkg/types"
 )
 
 type errMsg error
@@ -41,8 +43,8 @@ type model struct {
 	runAttempts     int
 	termW           int
 	termH           int
-	db              *sql.DB
-	activeRun       *fetching.Run
+	db              *db.Store
+	activeRun       *types.Run
 	cfg             config.Config
 	quitting        bool
 	err             error
@@ -55,7 +57,7 @@ type model struct {
 }
 
 type initDataMsg struct {
-	activeRun *fetching.Run
+	activeRun *types.Run
 	err       error
 }
 
@@ -113,7 +115,7 @@ func centerText(text string, width int) string {
 	return fmt.Sprintf("%*s%s%*s", leftSpaces, "", text, rightSpaces, "")
 }
 
-func initialModel(theme styles.Styles, db *sql.DB) model {
+func initialModel(theme styles.Styles, db *db.Store) model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	vp := viewport.New(20, 20)
@@ -138,7 +140,7 @@ func initialModel(theme styles.Styles, db *sql.DB) model {
 }
 
 func (m *model) buildListWithSplits() {
-	splits, fetchSplitsErr := fetching.GetSplitsByRunID(m.db, m.runID)
+	splits, fetchSplitsErr := m.db.GetSplitsByRunID(context.Background(), int64(m.runID))
 	if fetchSplitsErr != nil {
 		m.err = fetchSplitsErr
 		return
@@ -165,10 +167,10 @@ func (m *model) buildListWithSplits() {
 		m.rows[i] = rowData{
 			Name:    s.Name,
 			Type:    "split",
-			ID:      s.ID,
-			Hits:    s.Hits,
-			HitPB:   s.PBHits,
-			HitDiff: s.Diff,
+			ID:      int(s.ID),
+			Hits:    int(s.HitCount.Int64),
+			HitPB:   int(s.PbHitCount.Int64),
+			HitDiff: int(s.Diff.Int64),
 		}
 	}
 	m.setCursorToActiveSplit()
@@ -190,7 +192,7 @@ func (m *model) buildListWithRuns() {
 		Width(width - 2).
 		PaddingLeft(1)
 
-	names, err := fetching.GetAllRunNames(m.db)
+	names, err := m.db.GetAllRunNames(context.Background())
 	if err != nil {
 		m.err = err
 		return
@@ -205,7 +207,7 @@ func (m *model) buildListWithRuns() {
 		m.rows[i] = rowData{
 			Name: n.Name,
 			Type: "run",
-			ID:   n.ID,
+			ID:   int(n.ID),
 		}
 	}
 	m.clampCursor()
@@ -229,11 +231,20 @@ func (m *model) rebuildList() {
 		Foreground(m.s.Colors.Highlight).
 		Bold(true)
 
-	r, err := fetching.GetActiveRun(m.db)
+	r, err := m.db.GetActiveRun(context.Background())
 	if err != nil && err != sql.ErrNoRows {
 		m.err = err
 	} else if err == nil {
-		m.activeRun = r
+		aRun := types.Run{
+			ID:          int(r.ID),
+			Name:        r.Name,
+			Game:        sql.NullString{String: r.Game.String, Valid: true},
+			Category:    sql.NullString{String: r.Category.String, Valid: true},
+			Attempts:    int(r.Attempts.Int64),
+			ActiveSplit: int(r.ActiveSplit.Int64),
+		}
+
+		m.activeRun = &aRun
 	}
 	leftPad := 1
 	contentWidth := (width - 2) - leftPad
@@ -245,13 +256,13 @@ func (m *model) rebuildList() {
 
 		if m.activeRun == nil && isCursor && row.Type == "run" {
 			m.runID = row.ID
-			run, err := fetching.GetRunByID(m.db, m.runID)
+			run, err := m.db.GetRunByID(context.Background(), int64(m.runID))
 			if err != nil {
 				m.err = err
 				return
 			}
 			m.runName = run.Name
-			m.runID = run.ID
+			m.runID = int(run.ID)
 		}
 		switch row.Type {
 		case "split":
@@ -307,7 +318,7 @@ func (m *model) rebuildList() {
 		}
 	}
 	if isSplit {
-		totals, err := fetching.GetSplitTotalsByRunID(m.db, m.runID)
+		totals, err := m.db.GetSplitTotalsByRunID(context.Background(), int64(m.runID))
 		if err != nil {
 			m.err = err
 			return
@@ -315,9 +326,9 @@ func (m *model) rebuildList() {
 
 		summaryStats := ""
 		if m.cfg.General.ShowDiff {
-			summaryStats = fmt.Sprintf("│ %4d │ %2d │ %+4d │", totals.TotalHits, totals.TotalPB, totals.TotalDiff)
+			summaryStats = fmt.Sprintf("│ %4d │ %2d │ %+4d │", int(totals.TotalHits.Float64), int(totals.TotalPb.Float64), int(totals.TotalDiff.Float64))
 		} else {
-			summaryStats = fmt.Sprintf("│ %4d │ %2d │", totals.TotalHits, totals.TotalPB)
+			summaryStats = fmt.Sprintf("│ %4d │ %2d │", int(totals.TotalHits.Float64), int(totals.TotalPb.Float64))
 		}
 
 		summaryLabels := ""
@@ -375,14 +386,22 @@ func (m *model) refreshContent() {
 }
 
 func (m *model) refreshAfterPicker() {
-	r, err := fetching.GetActiveRun(m.db)
+	r, err := m.db.GetActiveRun(context.Background())
 	if err != nil && err != sql.ErrNoRows {
 		m.err = err
 		return
 	}
-	m.activeRun = r
-	if r != nil {
-		m.runID = r.ID
+	arun := &types.Run{
+		ID:          int(r.ID),
+		Name:        r.Name,
+		Game:        sql.NullString{String: r.Game.String, Valid: true},
+		Category:    sql.NullString{String: r.Category.String, Valid: true},
+		Attempts:    int(r.Attempts.Int64),
+		ActiveSplit: int(r.ActiveSplit.Int64),
+	}
+	m.activeRun = arun
+	if m.activeRun != nil {
+		m.runID = int(r.ID)
 		m.runName = r.Name
 		m.buildListWithSplits()
 	} else {
@@ -465,13 +484,21 @@ func (m *model) renderHelpMenu() string {
 	return boxedContent
 }
 
-func loadInitData(db *sql.DB) tea.Cmd {
+func loadInitData(s *db.Store) tea.Cmd {
 	return func() tea.Msg {
-		r, err := fetching.GetActiveRun(db)
+		r, err := s.GetActiveRun(context.Background())
 		if err != nil && err != sql.ErrNoRows {
 			return initDataMsg{nil, err}
 		}
-		return initDataMsg{r, nil}
+		arun := types.Run{
+			ID:          int(r.ID),
+			Name:        r.Name,
+			Game:        sql.NullString{String: r.Game.String, Valid: true},
+			Category:    sql.NullString{String: r.Category.String, Valid: true},
+			Attempts:    int(r.Attempts.Int64),
+			ActiveSplit: int(r.ActiveSplit.Int64),
+		}
+		return initDataMsg{&arun, nil}
 	}
 }
 
@@ -501,11 +528,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case selectionMsg:
 			if len(mm) > 0 {
 				selected := mm[0]
-				names, err := fetching.GetAllRunNames(m.db)
+				names, err := m.db.GetAllRunNames(context.Background())
 				if err == nil {
 					for _, n := range names {
 						if n.Name == selected {
-							if _, uerr := updating.UpdateActiveRunByID(m.db, n.ID); uerr != nil {
+							if uerr := m.db.UpdateActiveRunByID(context.Background(), sql.NullInt64{Int64: int64(n.ID), Valid: true}); uerr != nil {
 								m.err = uerr
 							}
 							break
@@ -600,7 +627,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.activeRun == nil {
 			if MatchesConfirm(msg) {
 				if m.cursor < len(m.rows) && m.rows[m.cursor].Type == "run" {
-					_, err := updating.UpdateActiveRunByID(m.db, m.rows[m.cursor].ID)
+					err := m.db.UpdateActiveRunByID(context.Background(), sql.NullInt64{Int64: int64(m.rows[m.cursor].ID), Valid: true})
 					if err != nil {
 						m.err = err
 					} else {
@@ -650,7 +677,7 @@ func (m *model) updateSelectedSplit() {
 		row := m.rows[m.cursor]
 		if row.Type == "split" {
 			m.splitID = row.ID
-			_, err := updating.UpdateActiveSplitByID(m.db, m.runID, m.splitID)
+			err := m.db.Queries.UpdateActiveSplitByID(context.Background(), sqlc.UpdateActiveSplitByIDParams{ID: int64(m.splitID), ID_2: int64(m.runID)})
 			if err != nil {
 				m.err = err
 			}
@@ -662,12 +689,12 @@ func (m *model) setCursorToActiveSplit() {
 	if m.activeRun != nil {
 		for i, row := range m.rows {
 			if row.Type == "split" {
-				split, err := fetching.GetSplitByID(m.db, row.ID)
+				split, err := m.db.GetSplitByID(context.Background(), int64(row.ID))
 				if err != nil {
 					m.err = err
 					return
 				}
-				if split.Idx == m.activeRun.ActiveSplit {
+				if split.Idx == int64(m.activeRun.ActiveSplit) {
 					m.cursor = i
 					m.splitID = row.ID
 					break
@@ -749,7 +776,7 @@ func (m model) View() string {
 }
 
 func (m *model) switchGame() {
-	names, err := fetching.GetAllRunNames(m.db)
+	names, err := m.db.GetAllRunNames(context.Background())
 	if err != nil {
 		m.err = err
 		return
@@ -778,7 +805,7 @@ func (m *model) switchGame() {
 	m.showFuzzyPicker = true
 }
 
-func NewMainScreen(s styles.Styles, db *sql.DB) {
+func NewMainScreen(s styles.Styles, db *db.Store) {
 	m := initialModel(s, db)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {

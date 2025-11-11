@@ -2,12 +2,15 @@ package hcmmigration
 
 import (
 	"bufio"
+	"context"
 	"database/sql"
 	"encoding/xml"
 	"os"
 	"strings"
 	"unicode"
 
+	"github.com/stefanistkuhl/ermokie/pkg/db"
+	"github.com/stefanistkuhl/ermokie/pkg/db/sqlc"
 	"github.com/stefanistkuhl/ermokie/pkg/games"
 	"github.com/stefanistkuhl/ermokie/pkg/games/categories"
 )
@@ -59,8 +62,9 @@ func LoadProfiles(fileName string) (Profiles, error) {
 	return profiles, err
 }
 
-func ImportProfiles(db *sql.DB, profiles Profiles) error {
-	tx, err := db.Begin()
+func ImportProfiles(s *db.Store, profiles Profiles) error {
+	ctx := context.Background()
+	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -88,20 +92,30 @@ func ImportProfiles(db *sql.DB, profiles Profiles) error {
 		} else {
 			categoryDB = nil
 		}
-		res, err := tx.Exec(
-			"INSERT INTO runs (name, attempts, active_split, game, category) VALUES (?, ?, ?, ?, ?)",
-			profile.Name, profile.Attempts, profile.ActiveSplit, gameDB, categoryDB)
+
+		insProfile := sqlc.InsertRunParams{
+			Name:        profile.Name,
+			Attempts:    sql.NullInt64{Int64: int64(profile.Attempts), Valid: true},
+			ActiveSplit: sql.NullInt64{Int64: int64(profile.ActiveSplit), Valid: true},
+			Game:        sql.NullString{String: gameDB.(string), Valid: true},
+			Category:    sql.NullString{String: categoryDB.(string), Valid: true},
+		}
+		id, err := s.Queries.InsertRun(context.Background(), insProfile)
 		if err != nil {
 			return err
 		}
 
-		runID, _ := res.LastInsertId()
-
 		for idx, row := range profile.Rows.ProfileRow {
-			_, err := tx.Exec(
-				"INSERT INTO splits (run_id, name, hit_count, pb_hit_count, idx) VALUES (?, ?, ?, ?, ?)",
-				runID, row.Title, row.Hits, row.PB, idx+1,
-			)
+			splitIns := sqlc.InsertSplitParams{
+				RunID:      id,
+				Name:       row.Title,
+				HitCount:   sql.NullInt64{Int64: int64(row.Hits), Valid: true},
+				PbHitCount: sql.NullInt64{Int64: int64(row.PB), Valid: true},
+				Idx:        int64(idx + 1),
+				SaveFile:   sql.NullString{String: "", Valid: false},
+			}
+			err := s.Queries.InsertSplit(context.Background(), splitIns)
+
 			if err != nil {
 				return err
 			}

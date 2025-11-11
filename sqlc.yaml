@@ -1,0 +1,13 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    queries:
+      - "./pkg/db/querys/inserts.sql"
+      - "./pkg/db/querys/selects.sql"
+      - "./pkg/db/querys/updates.sql"
+      - "./pkg/db/querys/deletes.sql"
+    schema: "./pkg/db/schema.sql"
+    gen:
+      go:
+        package: "sqlc"
+        out: "./pkg/db/sqlc"

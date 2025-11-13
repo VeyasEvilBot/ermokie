@@ -54,6 +54,7 @@ type model struct {
 	fuzzyOptions    []string
 	picker          *fuzzyFinder
 	showHelpMenu    bool
+	showError       bool
 }
 
 type initDataMsg struct {
@@ -143,6 +144,7 @@ func (m *model) buildListWithSplits() {
 	splits, fetchSplitsErr := m.db.GetSplitsByRunID(context.Background(), int64(m.runID))
 	if fetchSplitsErr != nil {
 		m.err = fetchSplitsErr
+		m.showError = true
 		return
 	}
 	width := m.vp.Width
@@ -195,6 +197,7 @@ func (m *model) buildListWithRuns() {
 	names, err := m.db.GetAllRunNames(context.Background())
 	if err != nil {
 		m.err = err
+		m.showError = true
 		return
 	}
 
@@ -234,6 +237,7 @@ func (m *model) rebuildList() {
 	r, err := m.db.GetActiveRun(context.Background())
 	if err != nil && err != sql.ErrNoRows {
 		m.err = err
+		m.showError = true
 	} else if err == nil {
 		aRun := types.Run{
 			ID:          int(r.ID),
@@ -259,6 +263,7 @@ func (m *model) rebuildList() {
 			run, err := m.db.GetRunByID(context.Background(), int64(m.runID))
 			if err != nil {
 				m.err = err
+				m.showError = true
 				return
 			}
 			m.runName = run.Name
@@ -321,6 +326,7 @@ func (m *model) rebuildList() {
 		totals, err := m.db.GetSplitTotalsByRunID(context.Background(), int64(m.runID))
 		if err != nil {
 			m.err = err
+			m.showError = true
 			return
 		}
 
@@ -389,6 +395,8 @@ func (m *model) refreshAfterPicker() {
 	r, err := m.db.GetActiveRun(context.Background())
 	if err != nil && err != sql.ErrNoRows {
 		m.err = err
+		m.showError = true
+		m.showError = true
 		return
 	}
 	arun := &types.Run{
@@ -472,13 +480,33 @@ func (m *model) renderHelpMenu() string {
 		}
 	}
 
-	content.WriteString("\n" + m.s.Hint.Render("Press F1, ?, or Esc to close this help menu"))
+	content.WriteString("\n" + m.s.Hint.Render("Press F1, ?, or Esc to close this menu"))
 
 	boxedContent := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.s.Colors.Accent).
 		Padding(1, 2).
 		Width(int(float64(m.termW) * 0.6)).
+		Render(content.String())
+
+	return boxedContent
+}
+
+func (m *model) renderError() string {
+	var content strings.Builder
+
+	title := m.s.Title.Render("Something went wrong")
+	content.WriteString(title + "\n\n")
+
+	content.WriteString(m.s.BodyText.Render(m.err.Error()) + "\n")
+
+	content.WriteString("\n" + m.s.Hint.Render("Press Esc to close this help menu"))
+
+	boxedContent := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(m.s.Colors.Accent)).
+		Padding(1, 2).
+		Width(int(float64(m.termW) * 0.4)).
 		Render(content.String())
 
 	return boxedContent
@@ -518,6 +546,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if m.showError {
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			if MatchesQuit(msg) || MatchesCancel(msg) {
+				m.showError = false
+				m.err = nil
+				return m, nil
+			}
+		}
+		return m, nil
+	}
+
 	if m.showFuzzyPicker && m.picker != nil {
 		var cmd tea.Cmd
 		var sub tea.Model
@@ -534,12 +574,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if n.Name == selected {
 							if uerr := m.db.UpdateActiveRunByID(context.Background(), sql.NullInt64{Int64: int64(n.ID), Valid: true}); uerr != nil {
 								m.err = uerr
+								m.showError = true
 							}
 							break
 						}
 					}
 				} else {
 					m.err = err
+					m.showError = true
 				}
 			}
 			m.showFuzzyPicker = false
@@ -570,6 +612,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case initDataMsg:
 		if msg.err != nil {
 			m.err = msg.err
+			m.showError = true
 			return m, nil
 		}
 		if msg.activeRun != nil {
@@ -630,6 +673,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					err := m.db.UpdateActiveRunByID(context.Background(), sql.NullInt64{Int64: int64(m.rows[m.cursor].ID), Valid: true})
 					if err != nil {
 						m.err = err
+						m.showError = true
 					} else {
 						m.runID = m.rows[m.cursor].ID
 						m.buildListWithSplits()
@@ -638,7 +682,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+
 	case errMsg:
+		m.showError = true
 		m.err = msg
 		return m, nil
 
@@ -680,6 +726,7 @@ func (m *model) updateSelectedSplit() {
 			err := m.db.Queries.UpdateActiveSplitByID(context.Background(), sqlc.UpdateActiveSplitByIDParams{ID: int64(m.splitID), ID_2: int64(m.runID)})
 			if err != nil {
 				m.err = err
+				m.showError = true
 			}
 		}
 	}
@@ -692,6 +739,7 @@ func (m *model) setCursorToActiveSplit() {
 				split, err := m.db.GetSplitByID(context.Background(), int64(row.ID))
 				if err != nil {
 					m.err = err
+					m.showError = true
 					return
 				}
 				if split.Idx == int64(m.activeRun.ActiveSplit) {
@@ -705,9 +753,6 @@ func (m *model) setCursorToActiveSplit() {
 }
 
 func (m model) View() string {
-	if m.err != nil {
-		return m.err.Error()
-	}
 	if m.quitting {
 		return "\n"
 	}
@@ -764,6 +809,15 @@ func (m model) View() string {
 		return PlaceOverlay(x, y, helpContent, content)
 	}
 
+	if m.err != nil {
+		modal := m.renderError()
+		modalWidth := lipgloss.Width(modal)
+		modalHeight := lipgloss.Height(modal)
+		x := (m.termW - modalWidth) / 2
+		y := (m.termH - modalHeight) / 2
+		return PlaceOverlay(x, y, modal, content)
+	}
+
 	if m.showFuzzyPicker && m.picker != nil {
 		modal := m.picker.ViewBox()
 		modalWidth := lipgloss.Width(modal)
@@ -779,6 +833,7 @@ func (m *model) switchGame() {
 	names, err := m.db.GetAllRunNames(context.Background())
 	if err != nil {
 		m.err = err
+		m.showError = true
 		return
 	}
 
@@ -792,6 +847,7 @@ func (m *model) switchGame() {
 	)
 	if err != nil {
 		m.err = err
+		m.showError = true
 		return
 	}
 	picker.termW, picker.termH = m.termW, m.termH

@@ -6,7 +6,6 @@ sql:
       - "./pkg/db/querys/selects.sql"
       - "./pkg/db/querys/updates.sql"
       - "./pkg/db/querys/deletes.sql"
-      - "./pkg/db/querys/broker.sql"
     schema: "./pkg/db/schema.sql"
     gen:
       go:

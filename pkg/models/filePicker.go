@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"codeberg.org/veya/ermokie/pkg/models/styles"
 	"github.com/charmbracelet/bubbles/filepicker"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/stefanistkuhl/ermokie/pkg/models/styles"
 	"golang.org/x/term"
 )
 

@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/stefanistkuhl/ermokie/pkg/db"
-	"github.com/stefanistkuhl/ermokie/pkg/db/sqlc"
-	"github.com/stefanistkuhl/ermokie/pkg/types"
+	"codeberg.org/veya/ermokie/pkg/db"
+	"codeberg.org/veya/ermokie/pkg/db/sqlc"
+	"codeberg.org/veya/ermokie/pkg/types"
 )
 
 type Preset struct {

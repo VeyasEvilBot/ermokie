@@ -21,7 +21,7 @@ type MessageQueue struct {
 	ID         int64
 	Topic      string
 	Payload    string
-	CreatedAt  interface{}
+	CreatedAt  sql.NullTime
 	ConsumedBy sql.NullString
 	ConsumedAt sql.NullTime
 }
@@ -52,10 +52,9 @@ type Split struct {
 }
 
 type Subscription struct {
-	ID        int64
-	MessageID int64
-	Topic     string
-	Action    string
-	Consumer  sql.NullString
-	Timestamp sql.NullTime
+	ID             int64
+	Topic          string
+	SubscriberName string
+	SubscribedAt   sql.NullTime
+	LastReadID     sql.NullInt64
 }

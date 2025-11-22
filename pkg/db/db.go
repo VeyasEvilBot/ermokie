@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/stefanistkuhl/ermokie/pkg/config"
-	"github.com/stefanistkuhl/ermokie/pkg/db/sqlc"
+	"codeberg.org/veya/ermokie/pkg/config"
+	"codeberg.org/veya/ermokie/pkg/db/sqlc"
 	_ "modernc.org/sqlite"
 )
 

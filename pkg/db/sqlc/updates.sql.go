@@ -10,6 +10,17 @@ import (
 	"database/sql"
 )
 
+const advanceSplitInActiveRun = `-- name: AdvanceSplitInActiveRun :exec
+UPDATE runs
+SET active_split = active_split + 1
+  WHERE (SELECT active_run FROM misc_info)
+`
+
+func (q *Queries) AdvanceSplitInActiveRun(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, advanceSplitInActiveRun)
+	return err
+}
+
 const updateActiveRun = `-- name: UpdateActiveRun :exec
 UPDATE misc_info
 SET active_run = (

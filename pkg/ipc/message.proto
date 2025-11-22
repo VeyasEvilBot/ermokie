@@ -1,0 +1,54 @@
+syntax = "proto3";
+package ipc;
+
+option go_package = "codeberg.org/veya/ermokie/pkg/ipc";
+
+service IPC {
+  rpc HandleRequest(Request) returns (Response);
+}
+
+message Request {
+  string id = 1;
+
+  oneof payload {
+    AdvanceSplit advance_split = 2;
+    ResetActiveRun reset_active_run = 3;
+    MoveActiveSplitBack move_active_split_back = 4;
+  }
+}
+
+message Response {
+  string id = 1;
+
+  oneof payload {
+    AdvanceSplitResult advance_split_result = 2;
+    ResetActiveRunResult reset_active_run_result = 3;
+    MoveActiveSplitBackResult move_active_split_back_result = 4;
+  }
+}
+
+message AdvanceSplit {
+  int64 run_id = 1;
+  int64 active_split_idx = 2;
+}
+
+message ResetActiveRun {
+  int64 run_id = 1;
+}
+
+message MoveActiveSplitBack {
+  int64 run_id = 1;
+}
+
+message AdvanceSplitResult {
+  int64 run_id = 1;
+  int64 active_split_idx = 2;
+}
+
+message ResetActiveRunResult {
+  int64 run_id = 1;
+}
+
+message MoveActiveSplitBackResult {
+  int64 run_id = 1;
+}

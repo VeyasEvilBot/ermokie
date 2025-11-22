@@ -21,5 +21,4 @@ func PrintRawJSON(data any, rawFlag bool) {
 
 	prettyData := pretty.Pretty(jsonData)
 	fmt.Println(string(prettyData))
-	os.Exit(0)
 }

@@ -6,21 +6,35 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"strings"
+	"time"
 
+	"codeberg.org/veya/ermokie/pkg/config"
+	"codeberg.org/veya/ermokie/pkg/db"
+	"codeberg.org/veya/ermokie/pkg/db/sqlc"
+	"codeberg.org/veya/ermokie/pkg/globals"
+	"codeberg.org/veya/ermokie/pkg/ipc"
+	"codeberg.org/veya/ermokie/pkg/models/styles"
+	"codeberg.org/veya/ermokie/pkg/types"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/reflow/truncate"
-	"github.com/stefanistkuhl/ermokie/pkg/config"
-	"github.com/stefanistkuhl/ermokie/pkg/db"
-	"github.com/stefanistkuhl/ermokie/pkg/db/sqlc"
-	"github.com/stefanistkuhl/ermokie/pkg/models/styles"
-	"github.com/stefanistkuhl/ermokie/pkg/types"
 )
 
 type errMsg error
+
+type IPCUpdate struct {
+	Event any
+}
+
+const (
+	ConsumerName = "ermokie_tui"
+	UpdateTopic  = "run.next.split"
+	PollInterval = 100 * time.Millisecond
+)
 
 type rowData struct {
 	Name    string
@@ -55,6 +69,7 @@ type model struct {
 	picker          *fuzzyFinder
 	showHelpMenu    bool
 	showError       bool
+	ipcChan         chan any
 }
 
 type initDataMsg struct {
@@ -116,7 +131,7 @@ func centerText(text string, width int) string {
 	return fmt.Sprintf("%*s%s%*s", leftSpaces, "", text, rightSpaces, "")
 }
 
-func initialModel(theme styles.Styles, db *db.Store) model {
+func initialModel(theme styles.Styles, ipcChan chan any, db *db.Store) model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	vp := viewport.New(20, 20)
@@ -137,6 +152,7 @@ func initialModel(theme styles.Styles, db *db.Store) model {
 		db:      db,
 		termW:   0,
 		termH:   0,
+		ipcChan: ipcChan,
 	}
 }
 
@@ -531,7 +547,7 @@ func loadInitData(s *db.Store) tea.Cmd {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, loadInitData(m.db))
+	return tea.Batch(m.spinner.Tick, loadInitData(m.db), m.listenToIPC())
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -609,6 +625,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.refreshContent()
 		return m, nil
+	case IPCUpdate:
+		switch event := msg.Event.(type) {
+		case *ipc.AdvanceSplitResult:
+			m.activeRun.ActiveSplit = int(event.ActiveSplitIdx)
+			m.buildListWithSplits()
+			return m, m.listenToIPC()
+		}
+		return m, m.listenToIPC()
 	case initDataMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -628,6 +652,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		if MatchesQuit(msg) {
 			m.quitting = true
+			if runtime.GOOS != "windows" {
+				os.Remove(globals.UnixIPCSocketPath)
+			}
 			return m, tea.Quit
 		}
 
@@ -861,8 +888,15 @@ func (m *model) switchGame() {
 	m.showFuzzyPicker = true
 }
 
-func NewMainScreen(s styles.Styles, db *db.Store) {
-	m := initialModel(s, db)
+func (m *model) listenToIPC() tea.Cmd {
+	return func() tea.Msg {
+		event := <-m.ipcChan
+		return IPCUpdate{Event: event}
+	}
+}
+
+func NewMainScreen(s styles.Styles, ipcChan chan any, db *db.Store) {
+	m := initialModel(s, ipcChan, db)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Println(err)

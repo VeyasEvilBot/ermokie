@@ -1,8 +1,8 @@
 package setup
 
 import (
+	"codeberg.org/veya/ermokie/pkg/models/styles"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/stefanistkuhl/ermokie/pkg/models/styles"
 )
 
 type StepKind int

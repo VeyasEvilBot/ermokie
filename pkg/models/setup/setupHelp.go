@@ -3,10 +3,10 @@ package setup
 import (
 	"strings"
 
+	"codeberg.org/veya/ermokie/pkg/models"
+	"codeberg.org/veya/ermokie/pkg/models/styles"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/stefanistkuhl/ermokie/pkg/models"
-	"github.com/stefanistkuhl/ermokie/pkg/models/styles"
 )
 
 type helpScreen struct {

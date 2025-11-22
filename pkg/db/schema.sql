@@ -98,50 +98,6 @@ create table if not exists misc_info (
 
 insert or ignore into misc_info (one, active_run) values (1, null);
 
-create unique index if not exists idx_splits_run_id_idx
-  on splits(run_id, idx);
-
-create table if not exists message_queue (
-  id integer primary key autoincrement,
-  topic text not null,
-  payload text not null,
-  created_at datatime default current_timestamp,
-  consumed_by text,
-  consumed_at datetime
-);
-
-create index if not exists idx_message_queue_topic_consumed
-on message_queue(topic, consumed_by);
-
-create index if not exists idx_message_queue_created_at
-on message_queue(created_at);
-
-create table if not exists subscriptions (
-  id integer primary key autoincrement,
-  message_id integer not null,
-  topic text not null,
-  action text not null, -- 'published', 'consumed', 'expired'
-  consumer text,
-  timestamp datetime default current_timestamp,
-  foreign key (message_id) references message_queue(id) on delete cascade
-);
-
-create index if not exists idx_subscriptions_topic
-on subscriptions(topic);
-
-create table if not exists message_log (
-  id integer primary key autoincrement,
-  message_id integer not null,
-  topic text not null,
-  action text not null, -- 'published', 'consumed', 'expired'
-  consumer text,
-  created_at datatime default current_timestamp,
-  foreign key (message_id) references message_queue(id) on delete cascade
-);
-
-create index if not exists idx_message_log_timestamp
-on message_log(created_at);
-
 drop trigger if exists shift_splits_idx_before_insert;
 create trigger shift_splits_idx_before_insert
 before insert on splits

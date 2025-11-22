@@ -3,11 +3,11 @@ package setup
 import (
 	"strings"
 
+	"codeberg.org/veya/ermokie/pkg/models"
+	"codeberg.org/veya/ermokie/pkg/models/styles"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/stefanistkuhl/ermokie/pkg/models"
-	"github.com/stefanistkuhl/ermokie/pkg/models/styles"
 )
 
 type screenList struct {

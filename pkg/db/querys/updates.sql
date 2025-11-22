@@ -14,3 +14,8 @@ SET active_split = (
   SELECT idx FROM splits WHERE splits.id = ?
 )
 WHERE runs.id = ?;
+
+-- name: AdvanceSplitInActiveRun :exec
+UPDATE runs
+SET active_split = active_split + 1
+  WHERE (SELECT active_run FROM misc_info);

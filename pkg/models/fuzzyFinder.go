@@ -5,13 +5,13 @@ import (
 	"slices"
 	"strings"
 
+	"codeberg.org/veya/ermokie/pkg/db"
+	"codeberg.org/veya/ermokie/pkg/models/styles"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sahilm/fuzzy"
-	"github.com/stefanistkuhl/ermokie/pkg/db"
-	"github.com/stefanistkuhl/ermokie/pkg/models/styles"
 )
 
 var (

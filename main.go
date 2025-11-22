@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/stefanistkuhl/ermokie/cmd"
+	"codeberg.org/veya/ermokie/cmd"
 )
 
 func main() {

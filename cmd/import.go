@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/stefanistkuhl/ermokie/pkg/db"
-	hcmmigration "github.com/stefanistkuhl/ermokie/pkg/hcmMigration"
+	"codeberg.org/veya/ermokie/pkg/db"
+	hcmmigration "codeberg.org/veya/ermokie/pkg/hcmMigration"
 )
 
 var importCmd = &cobra.Command{

@@ -1,21 +1,23 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"reflect"
 
+	"codeberg.org/veya/ermokie/pkg/config"
+	"codeberg.org/veya/ermokie/pkg/db"
+	hcmmigration "codeberg.org/veya/ermokie/pkg/hcmMigration"
+	"codeberg.org/veya/ermokie/pkg/ipc"
+	"codeberg.org/veya/ermokie/pkg/models"
+	"codeberg.org/veya/ermokie/pkg/models/setup"
+	"codeberg.org/veya/ermokie/pkg/models/styles"
+	"codeberg.org/veya/ermokie/pkg/presets"
+	"codeberg.org/veya/ermokie/pkg/types"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
-	"github.com/stefanistkuhl/ermokie/pkg/config"
-	"github.com/stefanistkuhl/ermokie/pkg/db"
-	hcmmigration "github.com/stefanistkuhl/ermokie/pkg/hcmMigration"
-	"github.com/stefanistkuhl/ermokie/pkg/models"
-	"github.com/stefanistkuhl/ermokie/pkg/models/setup"
-	"github.com/stefanistkuhl/ermokie/pkg/models/styles"
-	"github.com/stefanistkuhl/ermokie/pkg/presets"
-	"github.com/stefanistkuhl/ermokie/pkg/types"
 )
 
 var launchSetup bool = false
@@ -197,7 +199,10 @@ var rootCmd = &cobra.Command{
 			if getDbErr != nil {
 				log.Fatalf("Failed to initialize the database %s", err)
 			}
-			models.NewMainScreen(styles, store)
+			eventChan := make(chan any, 100)
+			server := ipc.NewUnixIpcServer(eventChan)
+			go server.Serve(context.Background())
+			models.NewMainScreen(styles, eventChan, store)
 		}
 
 		return nil

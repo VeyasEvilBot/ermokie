@@ -7,58 +7,286 @@ package sqlc
 
 import (
 	"context"
+	"database/sql"
 )
 
-const deleteOldMessageLogs = `-- name: DeleteOldMessageLogs :exec
-DELETE FROM message_log
-WHERE created_at < datetime('now', ?)
+const deleteInactiveSubscriptions = `-- name: DeleteInactiveSubscriptions :exec
+DELETE FROM subscriptions
+WHERE subscribed_at < DATETIME('now', ?)
 `
 
-func (q *Queries) DeleteOldMessageLogs(ctx context.Context, datetime interface{}) error {
-	_, err := q.db.ExecContext(ctx, deleteOldMessageLogs, datetime)
+func (q *Queries) DeleteInactiveSubscriptions(ctx context.Context, datetime interface{}) error {
+	_, err := q.db.ExecContext(ctx, deleteInactiveSubscriptions, datetime)
+	return err
+}
+
+const deleteOldLogs = `-- name: DeleteOldLogs :exec
+DELETE FROM message_log
+WHERE timestamp < DATETIME('now', ?)
+`
+
+func (q *Queries) DeleteOldLogs(ctx context.Context, datetime interface{}) error {
+	_, err := q.db.ExecContext(ctx, deleteOldLogs, datetime)
 	return err
 }
 
 const deleteOldMessages = `-- name: DeleteOldMessages :exec
-
 DELETE FROM message_queue
-WHERE consumed_by IS NOT NULL
-AND created_at < datetime('now', ?)
+WHERE consumed_by IS NOT NULL 
+AND consumed_at < DATETIME('now', ?)
 `
 
-// - cleanup
 func (q *Queries) DeleteOldMessages(ctx context.Context, datetime interface{}) error {
 	_, err := q.db.ExecContext(ctx, deleteOldMessages, datetime)
 	return err
 }
 
-const deleteOldSubscriptions = `-- name: DeleteOldSubscriptions :exec
-DELETE FROM subscriptions
-WHERE timestamp < datetime('now', ?)
-`
-
-func (q *Queries) DeleteOldSubscriptions(ctx context.Context, datetime interface{}) error {
-	_, err := q.db.ExecContext(ctx, deleteOldSubscriptions, datetime)
-	return err
-}
-
-const deleteOldUnconsumedMessages = `-- name: DeleteOldUnconsumedMessages :exec
+const deleteUnconsumedMessages = `-- name: DeleteUnconsumedMessages :exec
 DELETE FROM message_queue
-WHERE consumed_by IS NULL
-AND created_at < datetime('now', ?)
+WHERE consumed_by IS NULL 
+AND created_at < DATETIME('now', ?)
 `
 
-func (q *Queries) DeleteOldUnconsumedMessages(ctx context.Context, datetime interface{}) error {
-	_, err := q.db.ExecContext(ctx, deleteOldUnconsumedMessages, datetime)
+func (q *Queries) DeleteUnconsumedMessages(ctx context.Context, datetime interface{}) error {
+	_, err := q.db.ExecContext(ctx, deleteUnconsumedMessages, datetime)
 	return err
 }
 
-const deleteSubscriptionsByTopic = `-- name: DeleteSubscriptionsByTopic :exec
-DELETE FROM subscriptions
-WHERE topic = ?
+const getMessageStatsCount = `-- name: GetMessageStatsCount :one
+SELECT 
+  COUNT(*) as total_messages,
+  COUNT(CASE WHEN consumed_by IS NULL THEN 1 END) as unconsumed
+FROM message_queue
 `
 
-func (q *Queries) DeleteSubscriptionsByTopic(ctx context.Context, topic string) error {
-	_, err := q.db.ExecContext(ctx, deleteSubscriptionsByTopic, topic)
+type GetMessageStatsCountRow struct {
+	TotalMessages int64
+	Unconsumed    int64
+}
+
+func (q *Queries) GetMessageStatsCount(ctx context.Context) (GetMessageStatsCountRow, error) {
+	row := q.db.QueryRowContext(ctx, getMessageStatsCount)
+	var i GetMessageStatsCountRow
+	err := row.Scan(&i.TotalMessages, &i.Unconsumed)
+	return i, err
+}
+
+const getSubscriptionByTopicAndSubscriber = `-- name: GetSubscriptionByTopicAndSubscriber :one
+SELECT id, topic, subscriber_name, last_read_id, subscribed_at
+FROM subscriptions
+WHERE topic = ? AND subscriber_name = ?
+`
+
+type GetSubscriptionByTopicAndSubscriberParams struct {
+	Topic          string
+	SubscriberName string
+}
+
+type GetSubscriptionByTopicAndSubscriberRow struct {
+	ID             int64
+	Topic          string
+	SubscriberName string
+	LastReadID     sql.NullInt64
+	SubscribedAt   sql.NullTime
+}
+
+func (q *Queries) GetSubscriptionByTopicAndSubscriber(ctx context.Context, arg GetSubscriptionByTopicAndSubscriberParams) (GetSubscriptionByTopicAndSubscriberRow, error) {
+	row := q.db.QueryRowContext(ctx, getSubscriptionByTopicAndSubscriber, arg.Topic, arg.SubscriberName)
+	var i GetSubscriptionByTopicAndSubscriberRow
+	err := row.Scan(
+		&i.ID,
+		&i.Topic,
+		&i.SubscriberName,
+		&i.LastReadID,
+		&i.SubscribedAt,
+	)
+	return i, err
+}
+
+const getSubscriptionStats = `-- name: GetSubscriptionStats :one
+SELECT 
+  COUNT(*) as total_subscriptions,
+  COUNT(DISTINCT topic) as unique_topics
+FROM subscriptions
+`
+
+type GetSubscriptionStatsRow struct {
+	TotalSubscriptions int64
+	UniqueTopics       int64
+}
+
+func (q *Queries) GetSubscriptionStats(ctx context.Context) (GetSubscriptionStatsRow, error) {
+	row := q.db.QueryRowContext(ctx, getSubscriptionStats)
+	var i GetSubscriptionStatsRow
+	err := row.Scan(&i.TotalSubscriptions, &i.UniqueTopics)
+	return i, err
+}
+
+const getUnconsumedMessages = `-- name: GetUnconsumedMessages :many
+SELECT id, topic, payload, created_at, consumed_by, consumed_at
+FROM message_queue
+WHERE topic = ? AND consumed_by IS NULL
+ORDER BY created_at ASC
+LIMIT ?
+`
+
+type GetUnconsumedMessagesParams struct {
+	Topic string
+	Limit int64
+}
+
+func (q *Queries) GetUnconsumedMessages(ctx context.Context, arg GetUnconsumedMessagesParams) ([]MessageQueue, error) {
+	rows, err := q.db.QueryContext(ctx, getUnconsumedMessages, arg.Topic, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MessageQueue
+	for rows.Next() {
+		var i MessageQueue
+		if err := rows.Scan(
+			&i.ID,
+			&i.Topic,
+			&i.Payload,
+			&i.CreatedAt,
+			&i.ConsumedBy,
+			&i.ConsumedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getUnconsumedMessagesByTopic = `-- name: GetUnconsumedMessagesByTopic :many
+SELECT id, topic, payload, created_at, consumed_by, consumed_at
+FROM message_queue
+WHERE topic = ? AND consumed_by IS NULL AND id > ?
+ORDER BY id ASC
+LIMIT ?
+`
+
+type GetUnconsumedMessagesByTopicParams struct {
+	Topic string
+	ID    int64
+	Limit int64
+}
+
+func (q *Queries) GetUnconsumedMessagesByTopic(ctx context.Context, arg GetUnconsumedMessagesByTopicParams) ([]MessageQueue, error) {
+	rows, err := q.db.QueryContext(ctx, getUnconsumedMessagesByTopic, arg.Topic, arg.ID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MessageQueue
+	for rows.Next() {
+		var i MessageQueue
+		if err := rows.Scan(
+			&i.ID,
+			&i.Topic,
+			&i.Payload,
+			&i.CreatedAt,
+			&i.ConsumedBy,
+			&i.ConsumedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const logMessageAction = `-- name: LogMessageAction :exec
+INSERT INTO message_log (message_id, topic, action, consumer)
+VALUES (?, ?, ?, ?)
+`
+
+type LogMessageActionParams struct {
+	MessageID int64
+	Topic     string
+	Action    string
+	Consumer  sql.NullString
+}
+
+func (q *Queries) LogMessageAction(ctx context.Context, arg LogMessageActionParams) error {
+	_, err := q.db.ExecContext(ctx, logMessageAction,
+		arg.MessageID,
+		arg.Topic,
+		arg.Action,
+		arg.Consumer,
+	)
+	return err
+}
+
+const markMessageConsumed = `-- name: MarkMessageConsumed :exec
+UPDATE message_queue
+SET consumed_by = ?, consumed_at = CURRENT_TIMESTAMP
+WHERE id = ?
+`
+
+type MarkMessageConsumedParams struct {
+	ConsumedBy sql.NullString
+	ID         int64
+}
+
+func (q *Queries) MarkMessageConsumed(ctx context.Context, arg MarkMessageConsumedParams) error {
+	_, err := q.db.ExecContext(ctx, markMessageConsumed, arg.ConsumedBy, arg.ID)
+	return err
+}
+
+const publishMessage = `-- name: PublishMessage :one
+INSERT INTO message_queue (topic, payload)
+VALUES (?, ?)
+RETURNING id, topic, payload, created_at, consumed_by, consumed_at
+`
+
+type PublishMessageParams struct {
+	Topic   string
+	Payload string
+}
+
+func (q *Queries) PublishMessage(ctx context.Context, arg PublishMessageParams) (MessageQueue, error) {
+	row := q.db.QueryRowContext(ctx, publishMessage, arg.Topic, arg.Payload)
+	var i MessageQueue
+	err := row.Scan(
+		&i.ID,
+		&i.Topic,
+		&i.Payload,
+		&i.CreatedAt,
+		&i.ConsumedBy,
+		&i.ConsumedAt,
+	)
+	return i, err
+}
+
+const upsertSubscription = `-- name: UpsertSubscription :exec
+INSERT INTO subscriptions (topic, subscriber_name, last_read_id)
+VALUES (?, ?, ?)
+  ON CONFLICT(topic, subscriber_name) DO UPDATE SET
+  subscribed_at = CURRENT_TIMESTAMP,
+  last_read_id = excluded.last_read_id
+`
+
+type UpsertSubscriptionParams struct {
+	Topic          string
+	SubscriberName string
+	LastReadID     sql.NullInt64
+}
+
+func (q *Queries) UpsertSubscription(ctx context.Context, arg UpsertSubscriptionParams) error {
+	_, err := q.db.ExecContext(ctx, upsertSubscription, arg.Topic, arg.SubscriberName, arg.LastReadID)
 	return err
 }

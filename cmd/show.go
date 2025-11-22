@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"strings"
 
+	"codeberg.org/veya/ermokie/pkg/db"
+	"codeberg.org/veya/ermokie/pkg/db/sqlc"
+	"codeberg.org/veya/ermokie/pkg/utils"
 	"github.com/spf13/cobra"
-	"github.com/stefanistkuhl/ermokie/pkg/db"
-	"github.com/stefanistkuhl/ermokie/pkg/db/sqlc"
-	"github.com/stefanistkuhl/ermokie/pkg/utils"
 )
 
 var showCmd = &cobra.Command{
@@ -47,6 +47,7 @@ var showRunsCmd = &cobra.Command{
 		}
 
 		utils.PrintRawJSON(runs, rawFlag)
+		os.Exit(0)
 
 		maxID := 2
 		maxName := 4
@@ -149,6 +150,7 @@ var showRunCmd = &cobra.Command{
 				Splits: splits,
 			}
 			utils.PrintRawJSON(runWithSplits, rawFlag)
+			os.Exit(0)
 		}
 
 		fmt.Println("=== Run Information ===")
@@ -262,6 +264,7 @@ var showSplitsCmd = &cobra.Command{
 				Splits: splits,
 			}
 			utils.PrintRawJSON(runWithSplits, rawFlag)
+			os.Exit(0)
 		}
 
 		fmt.Printf("Run: %s\n", run.Name)
@@ -383,6 +386,7 @@ var showSplitCmd = &cobra.Command{
 				Split: split,
 			}
 			utils.PrintRawJSON(splitWithRun, rawFlag)
+			os.Exit(0)
 		}
 
 		fmt.Printf("Run: %s\n", run.Name)

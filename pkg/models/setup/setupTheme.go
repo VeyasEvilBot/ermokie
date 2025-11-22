@@ -1,8 +1,8 @@
 package setup
 
 import (
+	"codeberg.org/veya/ermokie/pkg/models/styles"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/stefanistkuhl/ermokie/pkg/models/styles"
 )
 
 type ThemeManager struct {

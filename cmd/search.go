@@ -6,10 +6,10 @@ import (
 	"os"
 	"strings"
 
+	"codeberg.org/veya/ermokie/pkg/db"
+	"codeberg.org/veya/ermokie/pkg/types"
+	"codeberg.org/veya/ermokie/pkg/utils"
 	"github.com/spf13/cobra"
-	"github.com/stefanistkuhl/ermokie/pkg/db"
-	"github.com/stefanistkuhl/ermokie/pkg/types"
-	"github.com/stefanistkuhl/ermokie/pkg/utils"
 )
 
 var searchCmd = &cobra.Command{
@@ -83,6 +83,7 @@ var searchRunsCmd = &cobra.Command{
 		}
 
 		utils.PrintRawJSON(filteredRuns, rawFlag)
+		os.Exit(0)
 
 		fmt.Printf("Found %d runs matching '%s':\n\n", len(filteredRuns), query)
 

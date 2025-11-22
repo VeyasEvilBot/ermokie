@@ -9,10 +9,10 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/stefanistkuhl/ermokie/pkg/db"
-	"github.com/stefanistkuhl/ermokie/pkg/db/sqlc"
-	"github.com/stefanistkuhl/ermokie/pkg/games"
-	"github.com/stefanistkuhl/ermokie/pkg/games/categories"
+	"codeberg.org/veya/ermokie/pkg/db"
+	"codeberg.org/veya/ermokie/pkg/db/sqlc"
+	"codeberg.org/veya/ermokie/pkg/games"
+	"codeberg.org/veya/ermokie/pkg/games/categories"
 )
 
 func LoadProfiles(fileName string) (Profiles, error) {

@@ -8,24 +8,6 @@ import (
 	"database/sql"
 )
 
-type MessageLog struct {
-	ID        int64
-	MessageID int64
-	Topic     string
-	Action    string
-	Consumer  sql.NullString
-	CreatedAt interface{}
-}
-
-type MessageQueue struct {
-	ID         int64
-	Topic      string
-	Payload    string
-	CreatedAt  sql.NullTime
-	ConsumedBy sql.NullString
-	ConsumedAt sql.NullTime
-}
-
 type MiscInfo struct {
 	One       int64
 	ActiveRun sql.NullInt64
@@ -49,12 +31,4 @@ type Split struct {
 	Diff       sql.NullInt64
 	Idx        int64
 	SaveFile   sql.NullString
-}
-
-type Subscription struct {
-	ID             int64
-	Topic          string
-	SubscriberName string
-	SubscribedAt   sql.NullTime
-	LastReadID     sql.NullInt64
 }

@@ -35,13 +35,21 @@ func (s *UnixIpcServer) HandleRequest(ctx context.Context, req *Request) (*Respo
 		result := s.handleAdvanceSplit(payload.AdvanceSplit)
 		s.EventChan <- result
 		resp.Payload = &Response_AdvanceSplitResult{AdvanceSplitResult: result}
+	case *Request_MoveActiveSplitBack:
+		result := s.handleMoveActiveSplitBack(payload.MoveActiveSplitBack)
+		s.EventChan <- result
+		resp.Payload = &Response_MoveActiveSplitBackResult{MoveActiveSplitBackResult: result}
 	}
 
 	return resp, nil
 }
 
 func (s *UnixIpcServer) handleAdvanceSplit(req *AdvanceSplit) *AdvanceSplitResult {
-	return &AdvanceSplitResult{RunId: req.RunId, ActiveSplitIdx: req.ActiveSplitIdx + 1}
+	return &AdvanceSplitResult{RunId: req.RunId, ActiveSplitIdx: req.ActiveSplitIdx}
+}
+
+func (s *UnixIpcServer) handleMoveActiveSplitBack(req *MoveActiveSplitBack) *MoveActiveSplitBackResult {
+	return &MoveActiveSplitBackResult{RunId: req.RunId, ActiveSplitIdx: req.ActiveSplitIdx}
 }
 
 func (s *UnixIpcServer) Serve(ctx context.Context) error {

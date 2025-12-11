@@ -38,6 +38,7 @@ message ResetActiveRun {
 
 message MoveActiveSplitBack {
   int64 run_id = 1;
+  int64 active_split_idx = 2;
 }
 
 message AdvanceSplitResult {
@@ -51,4 +52,5 @@ message ResetActiveRunResult {
 
 message MoveActiveSplitBackResult {
   int64 run_id = 1;
+  int64 active_split_idx = 2;
 }

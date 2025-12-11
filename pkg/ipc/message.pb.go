@@ -330,10 +330,11 @@ func (x *ResetActiveRun) GetRunId() int64 {
 }
 
 type MoveActiveSplitBack struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RunId         int64                  `protobuf:"varint,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	RunId          int64                  `protobuf:"varint,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	ActiveSplitIdx int64                  `protobuf:"varint,2,opt,name=active_split_idx,json=activeSplitIdx,proto3" json:"active_split_idx,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *MoveActiveSplitBack) Reset() {
@@ -369,6 +370,13 @@ func (*MoveActiveSplitBack) Descriptor() ([]byte, []int) {
 func (x *MoveActiveSplitBack) GetRunId() int64 {
 	if x != nil {
 		return x.RunId
+	}
+	return 0
+}
+
+func (x *MoveActiveSplitBack) GetActiveSplitIdx() int64 {
+	if x != nil {
+		return x.ActiveSplitIdx
 	}
 	return 0
 }
@@ -470,10 +478,11 @@ func (x *ResetActiveRunResult) GetRunId() int64 {
 }
 
 type MoveActiveSplitBackResult struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RunId         int64                  `protobuf:"varint,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	RunId          int64                  `protobuf:"varint,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	ActiveSplitIdx int64                  `protobuf:"varint,2,opt,name=active_split_idx,json=activeSplitIdx,proto3" json:"active_split_idx,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *MoveActiveSplitBackResult) Reset() {
@@ -513,6 +522,13 @@ func (x *MoveActiveSplitBackResult) GetRunId() int64 {
 	return 0
 }
 
+func (x *MoveActiveSplitBackResult) GetActiveSplitIdx() int64 {
+	if x != nil {
+		return x.ActiveSplitIdx
+	}
+	return 0
+}
+
 var File_pkg_ipc_message_proto protoreflect.FileDescriptor
 
 const file_pkg_ipc_message_proto_rawDesc = "" +
@@ -534,16 +550,18 @@ const file_pkg_ipc_message_proto_rawDesc = "" +
 	"\x06run_id\x18\x01 \x01(\x03R\x05runId\x12(\n" +
 	"\x10active_split_idx\x18\x02 \x01(\x03R\x0eactiveSplitIdx\"'\n" +
 	"\x0eResetActiveRun\x12\x15\n" +
-	"\x06run_id\x18\x01 \x01(\x03R\x05runId\",\n" +
+	"\x06run_id\x18\x01 \x01(\x03R\x05runId\"V\n" +
 	"\x13MoveActiveSplitBack\x12\x15\n" +
-	"\x06run_id\x18\x01 \x01(\x03R\x05runId\"U\n" +
+	"\x06run_id\x18\x01 \x01(\x03R\x05runId\x12(\n" +
+	"\x10active_split_idx\x18\x02 \x01(\x03R\x0eactiveSplitIdx\"U\n" +
 	"\x12AdvanceSplitResult\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\x03R\x05runId\x12(\n" +
 	"\x10active_split_idx\x18\x02 \x01(\x03R\x0eactiveSplitIdx\"-\n" +
 	"\x14ResetActiveRunResult\x12\x15\n" +
-	"\x06run_id\x18\x01 \x01(\x03R\x05runId\"2\n" +
+	"\x06run_id\x18\x01 \x01(\x03R\x05runId\"\\\n" +
 	"\x19MoveActiveSplitBackResult\x12\x15\n" +
-	"\x06run_id\x18\x01 \x01(\x03R\x05runId23\n" +
+	"\x06run_id\x18\x01 \x01(\x03R\x05runId\x12(\n" +
+	"\x10active_split_idx\x18\x02 \x01(\x03R\x0eactiveSplitIdx23\n" +
 	"\x03IPC\x12,\n" +
 	"\rHandleRequest\x12\f.ipc.Request\x1a\r.ipc.ResponseB#Z!codeberg.org/veya/ermokie/pkg/ipcb\x06proto3"
 

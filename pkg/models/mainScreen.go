@@ -631,6 +631,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeRun.ActiveSplit = int(event.ActiveSplitIdx)
 			m.buildListWithSplits()
 			return m, m.listenToIPC()
+		case *ipc.MoveActiveSplitBackResult:
+			m.activeRun.ActiveSplit = int(event.ActiveSplitIdx)
+			m.buildListWithSplits()
+			return m, m.listenToIPC()
 		}
 		return m, m.listenToIPC()
 	case initDataMsg:

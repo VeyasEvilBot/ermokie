@@ -19,3 +19,8 @@ WHERE runs.id = ?;
 UPDATE runs
 SET active_split = active_split + 1
   WHERE (SELECT active_run FROM misc_info);
+
+-- name: GoBackSplitInActiveRun :exec
+UPDATE runs
+SET active_split = active_split - 1
+  WHERE (SELECT active_run FROM misc_info);

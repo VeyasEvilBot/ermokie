@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/spf13/cobra"
 	"codeberg.org/veya/ermokie/pkg/db"
 	hcmmigration "codeberg.org/veya/ermokie/pkg/hcmMigration"
+	"github.com/spf13/cobra"
 )
 
 var importCmd = &cobra.Command{

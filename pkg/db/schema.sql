@@ -1,3 +1,5 @@
+PRAGMA encoding="UTF-8";
+
 create table if not exists runs (
   id integer primary key autoincrement,
   name text not null,

@@ -5,8 +5,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/xml"
+	"fmt"
 	"os"
 	"strings"
+	"time"
 	"unicode"
 
 	"codeberg.org/veya/ermokie/pkg/db"
@@ -63,6 +65,7 @@ func LoadProfiles(fileName string) (Profiles, error) {
 }
 
 func ImportProfiles(s *db.Store, profiles Profiles) error {
+	startTime := time.Now()
 	ctx := context.Background()
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -75,32 +78,32 @@ func ImportProfiles(s *db.Store, profiles Profiles) error {
 		}
 	}()
 
+	cat := games.NewCatalog()
+	catCatalog := categories.NewCatalog()
+
+	qtx := s.Queries.WithTx(tx)
+
 	for _, profile := range profiles.ProfileList.Profiles {
-		cat := games.NewCatalog()
-		catCatalog := categories.NewCatalog()
-		g, ok := games.ParseProfileGame(cat, profile.Name)
-		var gameDB any
-		if ok {
-			gameDB = g.Name
-		} else {
-			gameDB = nil
+
+		gameField := sql.NullString{Valid: false}
+		if g, ok := games.ParseProfileGame(cat, profile.Name); ok {
+			gameField = sql.NullString{String: g.Name, Valid: true}
 		}
-		c, ok := categories.ParseProfileCategory(catCatalog, profile.Name)
-		var categoryDB any
-		if ok {
-			categoryDB = c.Name
-		} else {
-			categoryDB = nil
+
+		categoryField := sql.NullString{Valid: false}
+		if c, ok := categories.ParseProfileCategory(catCatalog, profile.Name); ok {
+			categoryField = sql.NullString{String: c.Name, Valid: true}
 		}
 
 		insProfile := sqlc.InsertRunParams{
 			Name:        profile.Name,
 			Attempts:    sql.NullInt64{Int64: int64(profile.Attempts), Valid: true},
 			ActiveSplit: sql.NullInt64{Int64: int64(profile.ActiveSplit), Valid: true},
-			Game:        sql.NullString{String: gameDB.(string), Valid: true},
-			Category:    sql.NullString{String: categoryDB.(string), Valid: true},
+			Game:        gameField,
+			Category:    categoryField,
 		}
-		id, err := s.Queries.InsertRun(context.Background(), insProfile)
+
+		id, err := qtx.InsertRun(ctx, insProfile)
 		if err != nil {
 			return err
 		}
@@ -114,8 +117,7 @@ func ImportProfiles(s *db.Store, profiles Profiles) error {
 				Idx:        int64(idx + 1),
 				SaveFile:   sql.NullString{String: "", Valid: false},
 			}
-			err := s.Queries.InsertSplit(context.Background(), splitIns)
-
+			err := qtx.InsertSplit(ctx, splitIns)
 			if err != nil {
 				return err
 			}
@@ -126,5 +128,7 @@ func ImportProfiles(s *db.Store, profiles Profiles) error {
 		return err
 	}
 
+	finishTime := time.Now()
+	fmt.Printf("Imported %d profiles in %v\n", len(profiles.ProfileList.Profiles), finishTime.Sub(startTime))
 	return nil
 }

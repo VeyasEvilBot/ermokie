@@ -37,6 +37,7 @@ var splitNextCmd = &cobra.Command{
 			NumSplits   int
 		}
 		rawRes := rawResult{}
+		ctx := context.Background()
 
 		rawFlag, _ := cmd.Flags().GetBool("raw")
 		store, getDBErr := db.Init()
@@ -50,8 +51,7 @@ var splitNextCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		tx, startTxErr := store.DB.BeginTx(context.Background(), nil)
-
+		tx, startTxErr := store.DB.BeginTx(ctx, nil)
 		if startTxErr != nil {
 			if rawFlag {
 				rawRes.Error = startTxErr.Error()
@@ -61,8 +61,9 @@ var splitNextCmd = &cobra.Command{
 			}
 			os.Exit(1)
 		}
+		qtx := store.Queries.WithTx(tx)
 
-		run, getRunErr := store.Queries.GetActiveRun(context.Background())
+		run, getRunErr := qtx.GetActiveRun(ctx)
 
 		if getRunErr != nil {
 			if rawFlag {
@@ -76,7 +77,7 @@ var splitNextCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		splits, getSplitsErr := store.Queries.GetSplitsByRunID(context.Background(), run.ID)
+		splits, getSplitsErr := qtx.GetSplitsByRunID(ctx, run.ID)
 
 		if getSplitsErr != nil {
 			if rawFlag {
@@ -107,7 +108,7 @@ var splitNextCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		advanceErr := store.Queries.AdvanceSplitInActiveRun(context.Background())
+		advanceErr := qtx.AdvanceSplitInActiveRun(ctx)
 		if advanceErr != nil {
 			if rawFlag {
 				rawRes.Error = advanceErr.Error()
@@ -152,7 +153,7 @@ var splitNextCmd = &cobra.Command{
 
 			client := ipc.NewDRPCIPCClient(conn)
 
-			_, err := client.HandleRequest(context.Background(), &ipc.Request{
+			_, err := client.HandleRequest(ctx, &ipc.Request{
 				Id: "1",
 				Payload: &ipc.Request_AdvanceSplit{
 					AdvanceSplit: &ipc.AdvanceSplit{
@@ -205,7 +206,8 @@ var splitPrevCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		tx, startTxErr := store.DB.BeginTx(context.Background(), nil)
+		ctx := context.Background()
+		tx, startTxErr := store.DB.BeginTx(ctx, nil)
 
 		if startTxErr != nil {
 			if rawFlag {
@@ -217,7 +219,9 @@ var splitPrevCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		run, getRunErr := store.Queries.GetActiveRun(context.Background())
+		qtx := store.Queries.WithTx(tx)
+
+		run, getRunErr := qtx.GetActiveRun(ctx)
 
 		if getRunErr != nil {
 			if rawFlag {
@@ -231,7 +235,7 @@ var splitPrevCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		splits, getSplitsErr := store.Queries.GetSplitsByRunID(context.Background(), run.ID)
+		splits, getSplitsErr := qtx.GetSplitsByRunID(ctx, run.ID)
 
 		if getSplitsErr != nil {
 			if rawFlag {
@@ -262,7 +266,7 @@ var splitPrevCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		returnSplitErr := store.Queries.GoBackSplitInActiveRun(context.Background())
+		returnSplitErr := qtx.GoBackSplitInActiveRun(ctx)
 		if returnSplitErr != nil {
 			if rawFlag {
 				rawRes.Error = returnSplitErr.Error()
@@ -307,7 +311,7 @@ var splitPrevCmd = &cobra.Command{
 
 			client := ipc.NewDRPCIPCClient(conn)
 
-			_, err := client.HandleRequest(context.Background(), &ipc.Request{
+			_, err := client.HandleRequest(ctx, &ipc.Request{
 				Id: "1",
 				Payload: &ipc.Request_MoveActiveSplitBack{
 					MoveActiveSplitBack: &ipc.MoveActiveSplitBack{

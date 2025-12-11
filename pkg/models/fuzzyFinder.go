@@ -38,10 +38,6 @@ type fuzzyFinder struct {
 	db             *db.Store
 }
 
-func newFuzzyFinderWithTheme(data []string, multiMode bool, themeStyles styles.Styles, title string) (*fuzzyFinder, error) {
-	return newFuzzyFinderWithThemeAndFlag(data, multiMode, themeStyles, title, false, nil)
-}
-
 func newFuzzyFinderWithThemeAndFlag(data []string, multiMode bool, themeStyles styles.Styles, title string, fromMainScreen bool, db *db.Store) (*fuzzyFinder, error) {
 	ti := textinput.New()
 	ti.Prompt = styles.CursorGlyph
@@ -156,7 +152,6 @@ func (f *fuzzyFinder) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		f.termW = msg.Width
 		f.termH = msg.Height
 		f.boxW = int(float64(msg.Width) * 0.5)
-		// Use the same calculation as the working code
 		promptCells := lipgloss.Width(f.input.Prompt)
 		f.input.Width = max(f.boxW-promptCells-3, 0)
 		f.viewport.Width = f.boxW
@@ -165,6 +160,11 @@ func (f *fuzzyFinder) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			BorderForeground(f.styles.Colors.Accent)
 		f.refreshContent()
 		return f, nil
+
+	case selectionMsg:
+		if !f.fromMainScreen {
+			return f, tea.Quit
+		}
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -215,33 +215,57 @@ func (f *fuzzyFinder) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
-			if choice != "" && !slices.Contains(f.selection, choice) {
-				f.selection = append(f.selection, choice)
+			if f.multiMode {
+				if choice != "" && !slices.Contains(f.selection, choice) {
+					f.selection = append(f.selection, choice)
+				}
+				return f, func() tea.Msg { return selectionMsg(f.selection) }
+			} else {
+				if choice != "" {
+					f.selection = []string{choice}
+				}
+				return f, func() tea.Msg { return selectionMsg(f.selection) }
 			}
-
-			return f, func() tea.Msg { return selectionMsg(deduplicate(f.selection)) }
 
 		case "tab":
 			if f.multiMode {
-				if len(f.rows) > 0 && f.cursor >= 0 && f.cursor < len(f.rows) {
-					row := f.rows[f.cursor]
-					if slices.Contains(f.selection, row) {
-						f.selection = slices.DeleteFunc(f.selection, func(s string) bool {
-							return s == row
-						})
-					} else {
-						f.selection = append(f.selection, row)
+				var choice string
+				if f.liveValue == "" {
+					if len(f.rows) > 0 && f.cursor >= 0 && f.cursor < len(f.rows) {
+						choice = f.rows[f.cursor]
+					}
+				} else {
+					matches := fuzzy.Find(f.liveValue, f.rows)
+					results := getMatches(matches)
+					if len(results) > 0 && f.cursor >= 0 && f.cursor < len(results) {
+						choice = results[f.cursor]
 					}
 				}
+
+				if choice != "" {
+					if slices.Contains(f.selection, choice) {
+						f.selection = slices.DeleteFunc(f.selection, func(s string) bool {
+							return s == choice
+						})
+					} else {
+						f.selection = append(f.selection, choice)
+					}
+				}
+				f.refreshContent()
 			}
+			return f, nil
+
+		default:
+			var cmd tea.Cmd
+			f.input, cmd = f.input.Update(msg)
+			f.liveValue = f.input.Value()
+			f.cursor = 0
+			f.refreshContent()
+			return f, cmd
 		}
 	}
 
-	var cmd tea.Cmd
-	f.input, cmd = f.input.Update(msg)
-	f.liveValue = f.input.Value()
-	f.refreshContent()
-	return f, cmd
+	return f, nil
 }
 
 func (f *fuzzyFinder) ViewBox() string {
@@ -277,7 +301,6 @@ func (f *fuzzyFinder) View() string {
 			lipgloss.Center,
 			content,
 		)
-
 	}
 	boxedInput := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).

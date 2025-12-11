@@ -5,16 +5,15 @@ import (
 	"context"
 	"database/sql"
 	"encoding/xml"
-	"fmt"
 	"os"
 	"strings"
-	"time"
-	"unicode"
 
 	"codeberg.org/veya/ermokie/pkg/db"
 	"codeberg.org/veya/ermokie/pkg/db/sqlc"
 	"codeberg.org/veya/ermokie/pkg/games"
 	"codeberg.org/veya/ermokie/pkg/games/categories"
+	"golang.org/x/text/encoding/unicode"
+	"golang.org/x/text/transform"
 )
 
 func LoadProfiles(fileName string) (Profiles, error) {
@@ -25,18 +24,15 @@ func LoadProfiles(fileName string) (Profiles, error) {
 		return profiles, err
 	}
 	defer file.Close()
-	scanner := bufio.NewScanner(file)
+
+	transformer := unicode.BOMOverride(unicode.UTF16(unicode.BigEndian, unicode.IgnoreBOM).NewDecoder())
+	reader := transform.NewReader(file, transformer)
+	scanner := bufio.NewScanner(reader)
 
 	foundProfileSection := false
 	replacer := strings.NewReplacer(" ", "", "\t", "", "\n", "", "\r", "")
 	for scanner.Scan() {
 		line := scanner.Text()
-		line = strings.Map(func(r rune) rune {
-			if unicode.IsGraphic(r) {
-				return r
-			}
-			return -1
-		}, line)
 		line = replacer.Replace(line)
 
 		if line == "<Profiles>" {
@@ -50,7 +46,6 @@ func LoadProfiles(fileName string) (Profiles, error) {
 		if line == "</Profiles>" {
 			foundProfileSection = false
 		}
-
 	}
 	if err := scanner.Err(); err != nil {
 		panic(err)
@@ -65,7 +60,6 @@ func LoadProfiles(fileName string) (Profiles, error) {
 }
 
 func ImportProfiles(s *db.Store, profiles Profiles) error {
-	startTime := time.Now()
 	ctx := context.Background()
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -128,7 +122,5 @@ func ImportProfiles(s *db.Store, profiles Profiles) error {
 		return err
 	}
 
-	finishTime := time.Now()
-	fmt.Printf("Imported %d profiles in %v\n", len(profiles.ProfileList.Profiles), finishTime.Sub(startTime))
 	return nil
 }

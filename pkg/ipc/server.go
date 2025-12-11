@@ -1,18 +1,17 @@
+// server.go
 package ipc
 
 import (
 	"context"
 	"net"
-	"os"
 
-	"codeberg.org/veya/ermokie/pkg/globals"
 	"storj.io/drpc/drpcmux"
 	"storj.io/drpc/drpcserver"
 )
 
-type UnixIpcServer struct {
-	socketPath string
-	EventChan  chan any
+type IPCServer struct {
+	Listener  net.Listener
+	EventChan chan any
 }
 
 type SplitAdvancedEvent struct {
@@ -20,14 +19,18 @@ type SplitAdvancedEvent struct {
 	SplitIdx int64
 }
 
-func NewUnixIpcServer(eventChan chan any) *UnixIpcServer {
-	return &UnixIpcServer{
-		socketPath: globals.UnixIPCSocketPath,
-		EventChan:  eventChan,
+func NewIPCServer(eventChan chan any) (*IPCServer, error) {
+	lis, err := getListener()
+	if err != nil {
+		return nil, err
 	}
+	return &IPCServer{
+		Listener:  lis,
+		EventChan: eventChan,
+	}, nil
 }
 
-func (s *UnixIpcServer) HandleRequest(ctx context.Context, req *Request) (*Response, error) {
+func (s *IPCServer) HandleRequest(ctx context.Context, req *Request) (*Response, error) {
 	resp := &Response{Id: req.Id}
 
 	switch payload := req.Payload.(type) {
@@ -44,28 +47,21 @@ func (s *UnixIpcServer) HandleRequest(ctx context.Context, req *Request) (*Respo
 	return resp, nil
 }
 
-func (s *UnixIpcServer) handleAdvanceSplit(req *AdvanceSplit) *AdvanceSplitResult {
+func (s *IPCServer) handleAdvanceSplit(req *AdvanceSplit) *AdvanceSplitResult {
 	return &AdvanceSplitResult{RunId: req.RunId, ActiveSplitIdx: req.ActiveSplitIdx}
 }
 
-func (s *UnixIpcServer) handleMoveActiveSplitBack(req *MoveActiveSplitBack) *MoveActiveSplitBackResult {
+func (s *IPCServer) handleMoveActiveSplitBack(req *MoveActiveSplitBack) *MoveActiveSplitBackResult {
 	return &MoveActiveSplitBackResult{RunId: req.RunId, ActiveSplitIdx: req.ActiveSplitIdx}
 }
 
-func (s *UnixIpcServer) Serve(ctx context.Context) error {
-	_ = os.Remove(s.socketPath)
-	lis, err := net.Listen("unix", s.socketPath)
-	if err != nil {
-		return err
-	}
-	defer lis.Close()
-
+func (s *IPCServer) Serve(ctx context.Context) error {
 	m := drpcmux.New()
-	err = DRPCRegisterIPC(m, s)
+	err := DRPCRegisterIPC(m, s)
 	if err != nil {
 		return err
 	}
 
 	srv := drpcserver.New(m)
-	return srv.Serve(ctx, lis)
+	return srv.Serve(ctx, s.Listener)
 }

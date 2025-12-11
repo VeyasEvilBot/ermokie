@@ -200,9 +200,23 @@ var rootCmd = &cobra.Command{
 				log.Fatalf("Failed to initialize the database %s", err)
 			}
 			eventChan := make(chan any, 100)
-			server := ipc.NewUnixIpcServer(eventChan)
-			go server.Serve(context.Background())
+			server, err := ipc.NewIPCServer(eventChan)
+			if err != nil {
+				log.Fatalf("Failed to create IPC server: %v", err)
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+			go func() {
+				if err := server.Serve(ctx); err != nil {
+					log.Printf("IPC server error: %v", err)
+					cancel()
+					os.Exit(1)
+				}
+			}()
+
 			models.NewMainScreen(styles, eventChan, store)
+
+			cancel()
 		}
 
 		return nil

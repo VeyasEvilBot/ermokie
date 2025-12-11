@@ -3,16 +3,12 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
-	"runtime"
 
 	"codeberg.org/veya/ermokie/pkg/db"
-	"codeberg.org/veya/ermokie/pkg/globals"
 	"codeberg.org/veya/ermokie/pkg/ipc"
 	"codeberg.org/veya/ermokie/pkg/utils"
 	"github.com/spf13/cobra"
-	"storj.io/drpc/drpcconn"
 )
 
 var splitCmd = &cobra.Command{
@@ -133,42 +129,31 @@ var splitNextCmd = &cobra.Command{
 
 		rawRes.ActiveSplit = int(run.ActiveSplit.Int64) + 1
 
-		if runtime.GOOS == "windows" {
-			rawRes.Error = "Error: IPC not implemented on Windows yet"
+		client, getClientErr := ipc.GetIPCClient()
+		if getClientErr != nil {
 			if rawFlag {
+				rawRes.Error = getClientErr.Error()
 				utils.PrintRawJSON(rawRes, rawFlag)
-				return
+				os.Exit(1)
 			}
-		} else {
-			rawConn, rawConnErr := net.Dial("unix", globals.UnixIPCSocketPath)
-			if rawConnErr != nil {
-				if rawFlag {
-					rawRes.Error = rawConnErr.Error()
-					utils.PrintRawJSON(rawRes, rawFlag)
-					os.Exit(1)
-				}
-			}
-			conn := drpcconn.New(rawConn)
-			defer conn.Close()
+			os.Exit(1)
+		}
 
-			client := ipc.NewDRPCIPCClient(conn)
-
-			_, err := client.HandleRequest(ctx, &ipc.Request{
-				Id: "1",
-				Payload: &ipc.Request_AdvanceSplit{
-					AdvanceSplit: &ipc.AdvanceSplit{
-						RunId:          int64(rawRes.ID),
-						ActiveSplitIdx: int64(rawRes.ActiveSplit),
-					},
+		_, err := client.HandleRequest(ctx, &ipc.Request{
+			Id: "1",
+			Payload: &ipc.Request_AdvanceSplit{
+				AdvanceSplit: &ipc.AdvanceSplit{
+					RunId:          int64(rawRes.ID),
+					ActiveSplitIdx: int64(rawRes.ActiveSplit),
 				},
-			})
+			},
+		})
 
-			if err != nil {
-				if rawFlag {
-					rawRes.Error = err.Error()
-					utils.PrintRawJSON(rawRes, rawFlag)
-					os.Exit(1)
-				}
+		if err != nil {
+			if rawFlag {
+				rawRes.Error = err.Error()
+				utils.PrintRawJSON(rawRes, rawFlag)
+				os.Exit(1)
 			}
 		}
 		if rawFlag {
@@ -291,42 +276,30 @@ var splitPrevCmd = &cobra.Command{
 
 		rawRes.ActiveSplit = int(run.ActiveSplit.Int64) - 1
 
-		if runtime.GOOS == "windows" {
-			rawRes.Error = "Error: IPC not implemented on Windows yet"
+		client, getClientErr := ipc.GetIPCClient()
+		if getClientErr != nil {
 			if rawFlag {
+				rawRes.Error = getClientErr.Error()
 				utils.PrintRawJSON(rawRes, rawFlag)
-				return
+				os.Exit(1)
 			}
-		} else {
-			rawConn, rawConnErr := net.Dial("unix", globals.UnixIPCSocketPath)
-			if rawConnErr != nil {
-				if rawFlag {
-					rawRes.Error = rawConnErr.Error()
-					utils.PrintRawJSON(rawRes, rawFlag)
-					os.Exit(1)
-				}
-			}
-			conn := drpcconn.New(rawConn)
-			defer conn.Close()
-
-			client := ipc.NewDRPCIPCClient(conn)
-
-			_, err := client.HandleRequest(ctx, &ipc.Request{
-				Id: "1",
-				Payload: &ipc.Request_MoveActiveSplitBack{
-					MoveActiveSplitBack: &ipc.MoveActiveSplitBack{
-						RunId:          int64(rawRes.ID),
-						ActiveSplitIdx: int64(rawRes.ActiveSplit),
-					},
+			os.Exit(1)
+		}
+		_, err := client.HandleRequest(ctx, &ipc.Request{
+			Id: "1",
+			Payload: &ipc.Request_MoveActiveSplitBack{
+				MoveActiveSplitBack: &ipc.MoveActiveSplitBack{
+					RunId:          int64(rawRes.ID),
+					ActiveSplitIdx: int64(rawRes.ActiveSplit),
 				},
-			})
+			},
+		})
 
-			if err != nil {
-				if rawFlag {
-					rawRes.Error = err.Error()
-					utils.PrintRawJSON(rawRes, rawFlag)
-					os.Exit(1)
-				}
+		if err != nil {
+			if rawFlag {
+				rawRes.Error = err.Error()
+				utils.PrintRawJSON(rawRes, rawFlag)
+				os.Exit(1)
 			}
 		}
 		if rawFlag {

@@ -24,7 +24,6 @@ func LoadConfig() (Config, error) {
 		return cfg, getPathErr
 	}
 
-	// Check if config file exists
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return cfg, ErrNoConfigFile
 	}

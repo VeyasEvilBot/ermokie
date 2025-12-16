@@ -1,0 +1,63 @@
+:root {
+  --color-text-primary: @@.TextPrimary@@;
+  --color-border-primary: @@.BorderPrimary@@;
+  --color-border-secondary: @@.BorderSecondary@@;
+  --color-border-tertiary: @@.BorderTertiary@@;
+  --color-bg-header: @@.BgHeader@@;
+  --color-bg-row-even: @@.BgRowEven@@;
+  --color-bg-row-odd: @@.BgRowOdd@@;
+  --color-bg-highlighted: @@.BgHighlighted@@;
+}
+
+html {
+  font-family: sans-serif;
+}
+
+body {
+  background-color: transparent;
+}
+
+.run-name {
+  padding: 15px;
+  font-size: 16px;
+  color: var(--color-text-primary);
+  border: 2px solid var(--color-border-primary);
+  display: inline-block;
+}
+
+table {
+  border-collapse: collapse;
+  border: 2px solid var(--color-border-secondary);
+  letter-spacing: 1px;
+  font-size: 0.8rem;
+}
+
+td,
+th {
+  border: 1px solid var(--color-border-tertiary);
+  padding: 10px 20px;
+}
+
+th {
+  background-color: var(--color-bg-header);
+}
+
+td {
+  text-align: center;
+}
+
+tr:nth-child(even) td {
+  background-color: var(--color-bg-row-even);
+}
+
+tr:nth-child(odd) td {
+  background-color: var(--color-bg-row-odd);
+}
+
+caption {
+  padding: 10px;
+}
+
+.highlighted td {
+  background-color: var(--color-bg-highlighted) !important;
+}

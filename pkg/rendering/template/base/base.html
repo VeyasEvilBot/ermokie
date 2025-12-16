@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{.CssName}}">
+    <title>Ermokie</title>
+</head>
+
+<body>
+    <div class="run-name">{{.RunName}}</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Splits</th>
+                <th>Hits</th>
+                <th>PB</th>
+                <th>Diff</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Splits}}
+            <tr {{if .IsActive}}class="highlighted" {{end}}>
+                <td>{{.SplitName}}</td>
+                <td>{{.Hits}}</td>
+                <td>{{.PB}}</td>
+                <td>{{.Diff}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</body>
+<script>
+    function onUpdate() {
+        fetch(window.location.href)
+            .then(res => res.text())
+            .then(html => {
+                document.documentElement.innerHTML = html;
+            })
+            .catch(err => console.error('Update failed:', err));
+    }
+
+    setInterval(onUpdate, 1000);
+</script>
+
+</html>

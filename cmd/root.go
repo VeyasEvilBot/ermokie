@@ -42,7 +42,7 @@ var rootCmd = &cobra.Command{
 					Description: "Pick your preferred color theme (use arrow keys to preview)",
 					Options:     availableThemes,
 					OnDone: func(v any) tea.Cmd {
-						cfg.Theme.Overlay.Name = fmt.Sprintf("%v", v)
+						cfg.Overlay.Theme.Name = fmt.Sprintf("%v", v)
 						cfg.Theme.App.Name = fmt.Sprintf("%v", v)
 
 						return tea.Batch(

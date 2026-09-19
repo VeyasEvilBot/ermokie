@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/xml"
+	"fmt"
 	"os"
 	"strings"
 
@@ -23,11 +24,12 @@ func LoadProfiles(fileName string) (Profiles, error) {
 	if err != nil {
 		return profiles, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	transformer := unicode.BOMOverride(unicode.UTF16(unicode.BigEndian, unicode.IgnoreBOM).NewDecoder())
 	reader := transform.NewReader(file, transformer)
 	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 64*1024), 8*1024*1024)
 
 	foundProfileSection := false
 	replacer := strings.NewReplacer(" ", "", "\t", "", "\n", "", "\r", "")
@@ -48,15 +50,15 @@ func LoadProfiles(fileName string) (Profiles, error) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		panic(err)
+		return profiles, fmt.Errorf("read HCM profiles: %w", err)
 	}
 
 	xmlData := strings.Join(xmlContents, "\n")
 	err = xml.Unmarshal([]byte(xmlData), &profiles)
 	if err != nil {
-		panic(err)
+		return profiles, fmt.Errorf("parse HCM profiles: %w", err)
 	}
-	return profiles, err
+	return profiles, nil
 }
 
 func ImportProfiles(s *db.Store, profiles Profiles) error {
@@ -66,11 +68,7 @@ func ImportProfiles(s *db.Store, profiles Profiles) error {
 		return err
 	}
 
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-		}
-	}()
+	defer func() { _ = tx.Rollback() }()
 
 	cat := games.NewCatalog()
 	catCatalog := categories.NewCatalog()
@@ -108,7 +106,7 @@ func ImportProfiles(s *db.Store, profiles Profiles) error {
 				Name:       row.Title,
 				HitCount:   sql.NullInt64{Int64: int64(row.Hits), Valid: true},
 				PbHitCount: sql.NullInt64{Int64: int64(row.PB), Valid: true},
-				Idx:        int64(idx + 1),
+				Idx:        int64(idx),
 				SaveFile:   sql.NullString{String: "", Valid: false},
 			}
 			err := qtx.InsertSplit(ctx, splitIns)

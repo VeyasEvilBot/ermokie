@@ -102,17 +102,14 @@ func PresetToRunType(toImport Preset, presets []Preset) (types.RunCreate, bool) 
 	return run, false
 }
 
-func ImportPresets(s *db.Store, runs []types.RunCreate) error {
-	tx, err := s.DB.BeginTx(context.Background(), &sql.TxOptions{})
+func ImportPresets(s *db.Store, runs []types.RunCreate) (err error) {
+	ctx := context.Background()
+	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return err
 	}
-
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-		}
-	}()
+	defer func() { _ = tx.Rollback() }()
+	qtx := s.WithTx(tx)
 
 	for _, run := range runs {
 		insRun := sqlc.InsertRunParams{
@@ -122,7 +119,7 @@ func ImportPresets(s *db.Store, runs []types.RunCreate) error {
 			Game:        run.Game,
 			Category:    run.Category,
 		}
-		runID, err := s.Queries.InsertRun(context.Background(), insRun)
+		runID, err := qtx.InsertRun(ctx, insRun)
 		if err != nil {
 			return err
 		}
@@ -133,19 +130,14 @@ func ImportPresets(s *db.Store, runs []types.RunCreate) error {
 				Name:       split.Name,
 				HitCount:   sql.NullInt64{Int64: int64(split.Hits), Valid: true},
 				PbHitCount: sql.NullInt64{Int64: int64(split.PBHits), Valid: true},
-				Idx:        int64(idx + 1),
+				Idx:        int64(idx),
 				SaveFile:   split.SaveFile,
 			}
-			err := s.Queries.InsertSplit(context.Background(), splitIns)
-			if err != nil {
+			if err := qtx.InsertSplit(ctx, splitIns); err != nil {
 				return err
 			}
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-
-	return nil
+	return tx.Commit()
 }

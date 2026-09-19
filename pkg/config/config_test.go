@@ -14,7 +14,7 @@ func TestLoadConfigMergesFileOverDefaults(t *testing.T) {
 	t.Setenv(EnvDataDir, dataRoot)
 
 	path := filepath.Join(configRoot, "ermokie", "config.toml")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	contents := []byte("[keybinds]\nkeymap = 'wasd'\n[keybinds.custom]\nup = ['i']\nquit = ['x', 'ctrl+c']\n")

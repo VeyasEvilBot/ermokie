@@ -3,6 +3,7 @@ package models
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -12,7 +13,6 @@ import (
 
 	"codeberg.org/veya/ermokie/pkg/config"
 	"codeberg.org/veya/ermokie/pkg/db"
-	"codeberg.org/veya/ermokie/pkg/db/sqlc"
 	"codeberg.org/veya/ermokie/pkg/globals"
 	"codeberg.org/veya/ermokie/pkg/ipc"
 	"codeberg.org/veya/ermokie/pkg/models/styles"
@@ -249,15 +249,18 @@ func (m *model) rebuildList() {
 		Bold(true)
 
 	r, err := m.db.GetActiveRun(context.Background())
-	if err != nil && err != sql.ErrNoRows {
+	switch {
+	case err != nil && !errors.Is(err, sql.ErrNoRows):
 		m.err = err
 		m.showError = true
-	} else if err == nil {
+	case errors.Is(err, sql.ErrNoRows):
+		m.activeRun = nil
+	default:
 		aRun := types.Run{
 			ID:          int(r.ID),
 			Name:        r.Name,
-			Game:        sql.NullString{String: r.Game.String, Valid: true},
-			Category:    sql.NullString{String: r.Category.String, Valid: true},
+			Game:        r.Game,
+			Category:    r.Category,
 			Attempts:    int(r.Attempts.Int64),
 			ActiveSplit: int(r.ActiveSplit.Int64),
 		}
@@ -407,30 +410,30 @@ func (m *model) refreshContent() {
 
 func (m *model) refreshAfterPicker() {
 	r, err := m.db.GetActiveRun(context.Background())
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		m.err = err
 		m.showError = true
-		m.showError = true
+		return
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		m.activeRun = nil
+		m.runID = 0
+		m.runName = ""
+		m.buildListWithRuns()
 		return
 	}
 	arun := &types.Run{
 		ID:          int(r.ID),
 		Name:        r.Name,
-		Game:        sql.NullString{String: r.Game.String, Valid: true},
-		Category:    sql.NullString{String: r.Category.String, Valid: true},
+		Game:        r.Game,
+		Category:    r.Category,
 		Attempts:    int(r.Attempts.Int64),
 		ActiveSplit: int(r.ActiveSplit.Int64),
 	}
 	m.activeRun = arun
-	if m.activeRun != nil {
-		m.runID = int(r.ID)
-		m.runName = r.Name
-		m.buildListWithSplits()
-	} else {
-		m.runID = 0
-		m.runName = ""
-		m.buildListWithRuns()
-	}
+	m.runID = int(r.ID)
+	m.runName = r.Name
+	m.buildListWithSplits()
 }
 
 func (m *model) renderHelpMenu() string {
@@ -529,14 +532,17 @@ func (m *model) renderError() string {
 func loadInitData(s *db.Store) tea.Cmd {
 	return func() tea.Msg {
 		r, err := s.GetActiveRun(context.Background())
-		if err != nil && err != sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
+			return initDataMsg{activeRun: nil}
+		}
+		if err != nil {
 			return initDataMsg{nil, err}
 		}
 		arun := types.Run{
 			ID:          int(r.ID),
 			Name:        r.Name,
-			Game:        sql.NullString{String: r.Game.String, Valid: true},
-			Category:    sql.NullString{String: r.Category.String, Valid: true},
+			Game:        r.Game,
+			Category:    r.Category,
 			Attempts:    int(r.Attempts.Int64),
 			ActiveSplit: int(r.ActiveSplit.Int64),
 		}
@@ -626,10 +632,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case IPCUpdate:
 		switch event := msg.Event.(type) {
 		case *ipc.AdvanceSplitResult:
+			if m.activeRun == nil {
+				listenCmd := m.listenToIPC()
+				return m, listenCmd
+			}
 			m.activeRun.ActiveSplit = int(event.ActiveSplitIdx)
 			m.buildListWithSplits()
 			return m, m.listenToIPC()
 		case *ipc.MoveActiveSplitBackResult:
+			if m.activeRun == nil {
+				listenCmd := m.listenToIPC()
+				return m, listenCmd
+			}
 			m.activeRun.ActiveSplit = int(event.ActiveSplitIdx)
 			m.buildListWithSplits()
 			return m, m.listenToIPC()
@@ -668,25 +682,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor++
 			m.clampCursor()
 			m.ensureCursorVisible()
-			m.updateSelectedSplit()
 			m.rebuildList()
 
 		} else if MatchesUp(msg) {
 			m.cursor--
 			m.clampCursor()
 			m.ensureCursorVisible()
-			m.updateSelectedSplit()
 			m.rebuildList()
 		} else if MatchesJumpToTop(msg) {
 			m.cursor = 0
 			m.ensureCursorVisible()
-			m.updateSelectedSplit()
 			m.rebuildList()
 		} else if MatchesJumpToBottom(msg) {
 			if len(m.rows) > 0 {
 				m.cursor = len(m.rows) - 1
 				m.ensureCursorVisible()
-				m.updateSelectedSplit()
 				m.rebuildList()
 			}
 		} else if MatchesOpenGameSwitcher(msg) {
@@ -744,20 +754,6 @@ func (m *model) ensureCursorVisible() {
 		m.vp.YOffset = m.cursor
 	} else if m.cursor > bottom {
 		m.vp.YOffset = m.cursor - m.vp.Height + 1
-	}
-}
-
-func (m *model) updateSelectedSplit() {
-	if m.activeRun != nil && m.cursor < len(m.rows) {
-		row := m.rows[m.cursor]
-		if row.Type == "split" {
-			m.splitID = row.ID
-			err := m.db.Queries.UpdateActiveSplitByID(context.Background(), sqlc.UpdateActiveSplitByIDParams{ID: int64(m.splitID), ID_2: int64(m.runID)})
-			if err != nil {
-				m.err = err
-				m.showError = true
-			}
-		}
 	}
 }
 

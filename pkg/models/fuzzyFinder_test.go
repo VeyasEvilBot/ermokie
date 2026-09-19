@@ -15,7 +15,11 @@ func newTestFinder(t *testing.T, rows []string, multi, embedded bool) *fuzzyFind
 		t.Fatal(err)
 	}
 	model, _ := finder.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	return model.(*fuzzyFinder)
+	updated, ok := model.(*fuzzyFinder)
+	if !ok {
+		t.Fatalf("window update model = %T, want *fuzzyFinder", model)
+	}
+	return updated
 }
 
 func TestFuzzyFinderDeduplicatesRowsAndNavigatesWithConfiguredKeys(t *testing.T) {
@@ -31,7 +35,11 @@ func TestFuzzyFinderDeduplicatesRowsAndNavigatesWithConfiguredKeys(t *testing.T)
 		t.Fatalf("rows = %#v", finder.rows)
 	}
 	model, _ := finder.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
-	if got := model.(*fuzzyFinder).cursor; got != 1 {
+	updated, ok := model.(*fuzzyFinder)
+	if !ok {
+		t.Fatalf("key update model = %T, want *fuzzyFinder", model)
+	}
+	if got := updated.cursor; got != 1 {
 		t.Fatalf("cursor = %d, want 1", got)
 	}
 }
@@ -66,7 +74,11 @@ func TestFuzzyFinderDoesNotConfirmWhenFilterHasNoMatches(t *testing.T) {
 	if cmd != nil {
 		t.Fatalf("empty result unexpectedly emitted %T", cmd())
 	}
-	if got := model.(*fuzzyFinder).selection; len(got) != 0 {
+	updated, ok := model.(*fuzzyFinder)
+	if !ok {
+		t.Fatalf("confirm model = %T, want *fuzzyFinder", model)
+	}
+	if got := updated.selection; len(got) != 0 {
 		t.Fatalf("selection = %#v", got)
 	}
 }

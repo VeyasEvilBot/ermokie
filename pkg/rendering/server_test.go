@@ -1,6 +1,7 @@
 package rendering
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -30,7 +31,7 @@ func TestOverlayHandlerServesHTMLCSSAndHealth(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, tc.path, http.NoBody)
 			res := httptest.NewRecorder()
 			h.ServeHTTP(res, req)
 			if res.Code != http.StatusOK {
@@ -49,7 +50,7 @@ func TestOverlayHandlerServesHTMLCSSAndHealth(t *testing.T) {
 func TestOverlayHandlerReportsMissingRender(t *testing.T) {
 	h := NewOverlayServer(0, t.TempDir()).Handler()
 	res := httptest.NewRecorder()
-	h.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/overlay", nil))
+	h.ServeHTTP(res, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/overlay", http.NoBody))
 	if res.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d", res.Code, http.StatusServiceUnavailable)
 	}

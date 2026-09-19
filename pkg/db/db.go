@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	_ "embed"
 	"fmt"
-	"log"
-	"os"
 	"path/filepath"
 
 	"codeberg.org/veya/ermokie/pkg/config"
@@ -22,93 +20,64 @@ type Store struct {
 	DB *sql.DB
 }
 
-func openDB(dbPath string) (*sql.DB, error) {
+func openDB(ctx context.Context, dbPath string) (*sql.DB, error) {
 	dsn := fmt.Sprintf("file:%s?_foreign_keys=on&_busy_timeout=5000&_journal_mode=WAL", dbPath)
-	db, err := sql.Open("sqlite", dsn)
+	database, err := sql.Open("sqlite", dsn)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open sqlite database: %w", err)
 	}
-
-	if err := db.Ping(); err != nil {
-		_ = db.Close()
-		return nil, err
+	if err := database.PingContext(ctx); err != nil {
+		_ = database.Close()
+		return nil, fmt.Errorf("ping sqlite database: %w", err)
 	}
-	if _, err := db.Exec("PRAGMA foreign_keys = ON;"); err != nil {
-		_ = db.Close()
-		return nil, err
+	if _, err := database.ExecContext(ctx, "PRAGMA foreign_keys = ON;"); err != nil {
+		_ = database.Close()
+		return nil, fmt.Errorf("enable sqlite foreign keys: %w", err)
 	}
-	return db, nil
+	return database, nil
 }
 
 func Init() (*Store, error) {
+	ctx := context.Background()
 	dataDir := config.GetDataDir()
-	dbPath := filepath.Join(dataDir, "app.db")
-
-	_, statErr := os.Stat(dbPath)
-	if os.IsNotExist(statErr) {
-		db, err := openDB(dbPath)
+	if dataDir == "" {
+		var err error
+		dataDir, err = config.GetDataDirWithFallback("ermokie")
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("resolve data directory: %w", err)
 		}
-		tx, err := db.Begin()
-		if err != nil {
-			_ = db.Close()
-			return nil, err
-		}
-		if _, err := tx.Exec(Schema); err != nil {
-			_ = tx.Rollback()
-			_ = db.Close()
-			return nil, fmt.Errorf("apply schema: %w", err)
-		}
-		if err := tx.Commit(); err != nil {
-			_ = db.Close()
-			return nil, err
-		}
-		return &Store{
-			Queries: sqlc.New(db),
-			DB:      db,
-		}, nil
+		config.SetDataDir(dataDir)
 	}
 
-	db, err := openDB(dbPath)
+	database, err := openDB(ctx, filepath.Join(dataDir, "app.db"))
 	if err != nil {
 		return nil, err
 	}
 
-	if err := db.Ping(); err != nil {
-		log.Fatal("DB connection failed:", err)
-	}
-
-	ctx := context.Background()
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := database.BeginTx(ctx, nil)
 	if err != nil {
-		log.Fatal("begin tx:", err)
+		_ = database.Close()
+		return nil, fmt.Errorf("begin schema transaction: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
-
-	if _, err := tx.ExecContext(ctx, "PRAGMA foreign_keys = ON;"); err != nil {
-		log.Fatal("enable foreign_keys:", err)
-	}
-
 	if _, err := tx.ExecContext(ctx, Schema); err != nil {
-		log.Fatalf("apply schema failed: %v", err)
+		_ = tx.Rollback()
+		_ = database.Close()
+		return nil, fmt.Errorf("apply schema: %w", err)
 	}
-
 	if err := tx.Commit(); err != nil {
-		log.Fatal("commit schema:", err)
+		_ = database.Close()
+		return nil, fmt.Errorf("commit schema: %w", err)
 	}
 
-	return &Store{
-		Queries: sqlc.New(db),
-		DB:      db,
-	}, nil
+	return &Store{Queries: sqlc.New(database), DB: database}, nil
 }
 
-func CheckEmpty(db *sql.DB) bool {
+// CheckEmpty fails closed: an unreadable database is treated as non-empty so
+// import commands never overwrite or append data after an inspection error.
+func CheckEmpty(database *sql.DB) bool {
 	var count int
-	err := db.QueryRow("SELECT COUNT(*) FROM runs").Scan(&count)
-	if err != nil {
-		log.Fatal(err)
+	if err := database.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM runs").Scan(&count); err != nil {
+		return false
 	}
 	return count == 0
 }

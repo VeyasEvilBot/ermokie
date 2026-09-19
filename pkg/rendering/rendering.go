@@ -69,6 +69,8 @@ var templatePartPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
 // RenderHTML renders a matched HTML/CSS template pair. The built-in base
 // template is always available; user templates are loaded only from
 // TemplateDir after strict path-component validation.
+//
+//nolint:gocritic // RenderingParams is a public value-oriented options struct.
 func RenderHTML(params RenderingParams) ([]byte, []byte, error) {
 	category := string(params.Tc)
 	name := string(params.Tn)
@@ -87,7 +89,7 @@ func RenderHTML(params RenderingParams) ([]byte, []byte, error) {
 		return nil, nil, err
 	}
 
-	page := buildPageData(params)
+	page := buildPageData(&params)
 	htmlTmpl, err := htmltemplate.New(name + ".html").Parse(string(htmlSource))
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse HTML template: %w", err)
@@ -109,17 +111,21 @@ func RenderHTML(params RenderingParams) ([]byte, []byte, error) {
 }
 
 // RenderHtml is kept for source compatibility with older callers.
+//
+//nolint:gocritic // Keep the original value-taking public API compatible.
 func RenderHtml(params RenderingParams) ([]byte, []byte, error) {
 	return RenderHTML(params)
 }
 
+//nolint:gocritic // HTML and CSS are a naturally paired return value.
 func loadTemplatePair(root, category, name string) ([]byte, []byte, error) {
 	htmlName := name + ".html"
 	cssName := name + ".css"
 	if root != "" {
 		dir := filepath.Join(root, category)
-		htmlBytes, htmlErr := os.ReadFile(filepath.Join(dir, htmlName))
-		cssBytes, cssErr := os.ReadFile(filepath.Join(dir, cssName))
+		// category and name passed strict component validation before this call.
+		htmlBytes, htmlErr := os.ReadFile(filepath.Join(dir, htmlName)) // #nosec G304
+		cssBytes, cssErr := os.ReadFile(filepath.Join(dir, cssName))    // #nosec G304
 		switch {
 		case htmlErr == nil && cssErr == nil:
 			return htmlBytes, cssBytes, nil
@@ -146,7 +152,7 @@ func loadTemplatePair(root, category, name string) ([]byte, []byte, error) {
 	return htmlBytes, cssBytes, nil
 }
 
-func buildPageData(params RenderingParams) PageData {
+func buildPageData(params *RenderingParams) PageData {
 	active := -1
 	for i, split := range params.Splits {
 		if split.IsActive {
@@ -181,7 +187,7 @@ func buildPageData(params RenderingParams) PageData {
 
 // WriteOutput safely replaces the generated overlay files.
 func WriteOutput(dir string, htmlBytes, cssBytes []byte) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("create render directory: %w", err)
 	}
 	if err := writeAtomic(filepath.Join(dir, "output.html"), htmlBytes); err != nil {
@@ -199,13 +205,13 @@ func writeAtomic(path string, data []byte) error {
 		return fmt.Errorf("create temporary render file: %w", err)
 	}
 	tmp := file.Name()
-	defer os.Remove(tmp)
+	defer func() { _ = os.Remove(tmp) }()
 	if err := file.Chmod(0o644); err != nil {
-		file.Close()
+		_ = file.Close()
 		return fmt.Errorf("set render permissions: %w", err)
 	}
 	if _, err := file.Write(data); err != nil {
-		file.Close()
+		_ = file.Close()
 		return fmt.Errorf("write temporary render file: %w", err)
 	}
 	if err := file.Close(); err != nil {

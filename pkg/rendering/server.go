@@ -42,7 +42,8 @@ func (o *OverlayServer) serveFile(name, contentType string) http.HandlerFunc {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		content, err := os.ReadFile(filepath.Join(o.dirPath, name))
+		// name is supplied only by the fixed /overlay and /output.css routes.
+		content, err := os.ReadFile(filepath.Join(o.dirPath, name)) // #nosec G304
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				http.Error(w, "overlay has not been rendered yet", http.StatusServiceUnavailable)

@@ -52,7 +52,7 @@ func TestRenderHTMLUsesWindowAroundActiveSplitAndEscapesData(t *testing.T) {
 func TestRenderHTMLLoadsCustomTemplatePair(t *testing.T) {
 	dir := t.TempDir()
 	customDir := filepath.Join(dir, "compact")
-	if err := os.MkdirAll(customDir, 0o755); err != nil {
+	if err := os.MkdirAll(customDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(customDir, "stream.html"), []byte(`{{.RunName}}|{{range .Splits}}{{.SplitName}},{{end}}`), 0o600); err != nil {
@@ -93,7 +93,7 @@ func TestWriteOutputAtomicallyCreatesPair(t *testing.T) {
 		t.Fatalf("WriteOutput() error = %v", err)
 	}
 	for name, want := range map[string]string{"output.html": "html", "output.css": "css"} {
-		got, err := os.ReadFile(filepath.Join(dir, name))
+		got, err := os.ReadFile(filepath.Join(dir, name)) // #nosec G304 -- names are fixed test fixtures.
 		if err != nil {
 			t.Fatal(err)
 		}

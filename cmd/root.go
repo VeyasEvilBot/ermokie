@@ -191,8 +191,8 @@ var rootCmd = &cobra.Command{
 			if !models.LoadKeymapFromConfig(cfg.KeyBinds.Keymap) {
 				return fmt.Errorf("unknown keymap %q", cfg.KeyBinds.Keymap)
 			}
-			if err := models.GlobalKeybindingManager.ApplyOverrides(cfg.KeyBinds.Custom); err != nil {
-				return fmt.Errorf("load custom keybindings: %w", err)
+			if overrideErr := models.GlobalKeybindingManager.ApplyOverrides(cfg.KeyBinds.Custom); overrideErr != nil {
+				return fmt.Errorf("load custom keybindings: %w", overrideErr)
 			}
 			theme := "default"
 			themeManager := setup.NewThemeManager()

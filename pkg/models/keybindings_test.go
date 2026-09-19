@@ -49,3 +49,19 @@ func TestApplyOverridesRejectsUnknownAndEmptyBindings(t *testing.T) {
 		t.Fatal("empty binding was accepted")
 	}
 }
+
+func TestTrackerBindingsHaveSafeConvenientDefaults(t *testing.T) {
+	km := NewKeybindingManager()
+	tests := map[KeybindingAction][]string{
+		ActionAddHit:        {"+", "="},
+		ActionRemoveHit:     {"-", "_"},
+		ActionAdvanceSplit:  {"enter", " "},
+		ActionPreviousSplit: {"backspace", "u"},
+		ActionResetRun:      {"R"},
+	}
+	for action, want := range tests {
+		if got := km.GetKeysForAction(action); !reflect.DeepEqual(got, want) {
+			t.Errorf("%q keys = %#v, want %#v", action, got, want)
+		}
+	}
+}

@@ -53,7 +53,8 @@ func TestIPCProgressUpdateWithoutActiveRunDoesNotPanic(t *testing.T) {
 }
 
 func TestNavigationDoesNotChangeRunProgress(t *testing.T) {
-	config.SetDataDir(t.TempDir())
+	dataDir := t.TempDir()
+	config.SetDataDir(dataDir)
 	t.Cleanup(func() { config.SetDataDir("") })
 	store, err := db.Init()
 	if err != nil {
@@ -81,7 +82,13 @@ func TestNavigationDoesNotChangeRunProgress(t *testing.T) {
 	}
 	LoadKeymapFromConfig("basic")
 	m := model{
-		db:        store,
+		db: store,
+		cfg: config.Config{
+			General: config.GeneralSettings{DataDir: dataDir},
+			Overlay: config.OverlayConfig{
+				Theme: config.OverlayThemeConfig{Name: "default"}, TemplateCategory: "base", TemplateName: "base",
+			},
+		},
 		activeRun: &types.Run{ID: int(runID), ActiveSplit: 0},
 		runID:     int(runID),
 		rows: []rowData{
@@ -104,5 +111,46 @@ func TestNavigationDoesNotChangeRunProgress(t *testing.T) {
 	}
 	if run.ActiveSplit.Int64 != 0 {
 		t.Fatalf("navigation changed active split to %d", run.ActiveSplit.Int64)
+	}
+
+	updated, cmd := updatedModel.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'+'}})
+	if cmd == nil {
+		t.Fatal("add-hit key produced no command")
+	}
+	updatedModel, ok = updated.(model)
+	if !ok {
+		t.Fatalf("updated model type = %T", updated)
+	}
+	updated, _ = updatedModel.Update(cmd())
+	updatedModel, ok = updated.(model)
+	if !ok {
+		t.Fatalf("tracker result model type = %T", updated)
+	}
+	first, err := store.GetSplitByRunIDAndIdx(ctx, dbsqlc.GetSplitByRunIDAndIdxParams{RunID: runID, Idx: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.HitCount.Int64 != 1 {
+		t.Fatalf("add-hit key left hit count at %d", first.HitCount.Int64)
+	}
+
+	_, cmd = updatedModel.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("advance key produced no command")
+	}
+	changeMsg := cmd()
+	changed, ok := changeMsg.(trackerChangedMsg)
+	if !ok {
+		t.Fatalf("advance command message = %T", changeMsg)
+	}
+	if changed.err != nil {
+		t.Fatal(changed.err)
+	}
+	run, err = store.GetRunByID(ctx, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.ActiveSplit.Int64 != 1 {
+		t.Fatalf("advance key left active split at %d", run.ActiveSplit.Int64)
 	}
 }

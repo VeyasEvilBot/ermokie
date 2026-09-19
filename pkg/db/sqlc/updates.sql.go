@@ -12,12 +12,27 @@ import (
 
 const advanceSplitInActiveRun = `-- name: AdvanceSplitInActiveRun :exec
 UPDATE runs
-SET active_split = active_split + 1
+SET active_split = MIN(
+  active_split + 1,
+  COALESCE((SELECT MAX(idx) FROM splits WHERE run_id = runs.id), active_split)
+)
 WHERE id = (SELECT active_run FROM misc_info WHERE one = 1)
 `
 
 func (q *Queries) AdvanceSplitInActiveRun(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, advanceSplitInActiveRun)
+	return err
+}
+
+const decrementActiveSplitHit = `-- name: DecrementActiveSplitHit :exec
+UPDATE splits
+SET hit_count = MAX(COALESCE(hit_count, 0) - 1, 0)
+WHERE run_id = (SELECT active_run FROM misc_info WHERE one = 1)
+  AND idx = (SELECT active_split FROM runs WHERE runs.id = splits.run_id)
+`
+
+func (q *Queries) DecrementActiveSplitHit(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, decrementActiveSplitHit)
 	return err
 }
 
@@ -29,6 +44,41 @@ WHERE id = (SELECT active_run FROM misc_info WHERE one = 1)
 
 func (q *Queries) GoBackSplitInActiveRun(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, goBackSplitInActiveRun)
+	return err
+}
+
+const incrementActiveSplitHit = `-- name: IncrementActiveSplitHit :exec
+UPDATE splits
+SET hit_count = COALESCE(hit_count, 0) + 1
+WHERE run_id = (SELECT active_run FROM misc_info WHERE one = 1)
+  AND idx = (SELECT active_split FROM runs WHERE runs.id = splits.run_id)
+`
+
+func (q *Queries) IncrementActiveSplitHit(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, incrementActiveSplitHit)
+	return err
+}
+
+const resetActiveRunHits = `-- name: ResetActiveRunHits :exec
+UPDATE splits
+SET hit_count = 0
+WHERE run_id = (SELECT active_run FROM misc_info WHERE one = 1)
+`
+
+func (q *Queries) ResetActiveRunHits(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, resetActiveRunHits)
+	return err
+}
+
+const resetActiveRunProgress = `-- name: ResetActiveRunProgress :exec
+UPDATE runs
+SET active_split = 0,
+    attempts = COALESCE(attempts, 0) + 1
+WHERE id = (SELECT active_run FROM misc_info WHERE one = 1)
+`
+
+func (q *Queries) ResetActiveRunProgress(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, resetActiveRunProgress)
 	return err
 }
 

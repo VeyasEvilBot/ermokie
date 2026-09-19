@@ -16,6 +16,8 @@ import (
 	"codeberg.org/veya/ermokie/pkg/globals"
 	"codeberg.org/veya/ermokie/pkg/ipc"
 	"codeberg.org/veya/ermokie/pkg/models/styles"
+	"codeberg.org/veya/ermokie/pkg/rendering"
+	"codeberg.org/veya/ermokie/pkg/tracker"
 	"codeberg.org/veya/ermokie/pkg/types"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -75,6 +77,16 @@ type model struct {
 type initDataMsg struct {
 	activeRun *types.Run
 	err       error
+}
+
+type trackerChangedMsg struct {
+	err error
+}
+
+func trackerActionCmd(store *db.Store, action func(context.Context, *tracker.Service) error) tea.Cmd {
+	return func() tea.Msg {
+		return trackerChangedMsg{err: action(context.Background(), tracker.New(store))}
+	}
 }
 
 func clipCells(s string, w int) string {
@@ -408,7 +420,18 @@ func (m *model) refreshContent() {
 	}
 }
 
-func (m *model) refreshAfterPicker() {
+func (m *model) writeOverlay() {
+	if m.activeRun == nil {
+		return
+	}
+	renderErr := rendering.RenderRun(context.Background(), m.db, &m.cfg, int64(m.activeRun.ID))
+	if renderErr != nil {
+		m.err = renderErr
+		m.showError = true
+	}
+}
+
+func (m *model) reloadActiveRun() {
 	r, err := m.db.GetActiveRun(context.Background())
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		m.err = err
@@ -434,6 +457,7 @@ func (m *model) refreshAfterPicker() {
 	m.runID = int(r.ID)
 	m.runName = r.Name
 	m.buildListWithSplits()
+	m.writeOverlay()
 }
 
 func (m *model) renderHelpMenu() string {
@@ -466,6 +490,11 @@ func (m *model) renderHelpMenu() string {
 		ActionHelp:             "Show this help menu",
 		ActionYes:              "Answer yes",
 		ActionNo:               "Answer no",
+		ActionAddHit:           "Add hit to active split",
+		ActionRemoveHit:        "Remove hit from active split",
+		ActionAdvanceSplit:     "Advance run progress",
+		ActionPreviousSplit:    "Move run progress back",
+		ActionResetRun:         "Reset hits and start a new attempt",
 	}
 
 	actionOrder := []KeybindingAction{
@@ -479,6 +508,11 @@ func (m *model) renderHelpMenu() string {
 		ActionJumpToTop,
 		ActionJumpToBottom,
 		ActionOpenGameSwitcher,
+		ActionAddHit,
+		ActionRemoveHit,
+		ActionAdvanceSplit,
+		ActionPreviousSplit,
+		ActionResetRun,
 		ActionHelp,
 		ActionQuit,
 		ActionYes,
@@ -606,7 +640,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.showFuzzyPicker = false
 			m.picker = nil
-			m.refreshAfterPicker()
+			m.reloadActiveRun()
 			return m, nil
 		case cancelPickerMsg:
 			m.showFuzzyPicker = false
@@ -663,7 +697,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshContent()
 		if m.activeRun != nil {
 			m.setCursorToActiveSplit()
+			m.writeOverlay()
 		}
+		return m, nil
+	case trackerChangedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			m.showError = true
+			return m, nil
+		}
+		m.reloadActiveRun()
+		m.setCursorToActiveSplit()
 		return m, nil
 	case tea.KeyMsg:
 		if MatchesQuit(msg) {
@@ -672,6 +716,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				os.Remove(globals.UnixIPCSocketPath)
 			}
 			return m, tea.Quit
+		}
+		if m.activeRun != nil {
+			switch {
+			case MatchesAddHit(msg):
+				return m, trackerActionCmd(m.db, func(ctx context.Context, service *tracker.Service) error {
+					return service.AddHit(ctx)
+				})
+			case MatchesRemoveHit(msg):
+				return m, trackerActionCmd(m.db, func(ctx context.Context, service *tracker.Service) error {
+					return service.RemoveHit(ctx)
+				})
+			case MatchesAdvanceSplit(msg):
+				return m, trackerActionCmd(m.db, func(ctx context.Context, service *tracker.Service) error {
+					return service.Advance(ctx)
+				})
+			case MatchesPreviousSplit(msg):
+				return m, trackerActionCmd(m.db, func(ctx context.Context, service *tracker.Service) error {
+					return service.Previous(ctx)
+				})
+			case MatchesResetRun(msg):
+				return m, trackerActionCmd(m.db, func(ctx context.Context, service *tracker.Service) error {
+					return service.Reset(ctx)
+				})
+			}
 		}
 
 		if m.showSelection && MatchesCancel(msg) {

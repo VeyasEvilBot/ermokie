@@ -51,7 +51,12 @@ func TestAdvanceAndBackOnlyMutateActiveRun(t *testing.T) {
 	}
 	activeID := insert("active")
 	otherID := insert("other")
-	if updateErr := store.UpdateActiveRunByID(ctx, sql.NullInt64{Int64: activeID, Valid: true}); updateErr != nil {
+	insertSplitErr := store.InsertSplit(ctx, dbsqlc.InsertSplitParams{RunID: activeID, Name: "second", Idx: 1})
+	if insertSplitErr != nil {
+		t.Fatal(insertSplitErr)
+	}
+	updateErr := store.UpdateActiveRunByID(ctx, sql.NullInt64{Int64: activeID, Valid: true})
+	if updateErr != nil {
 		t.Fatal(updateErr)
 	}
 	if advanceErr := store.AdvanceSplitInActiveRun(ctx); advanceErr != nil {

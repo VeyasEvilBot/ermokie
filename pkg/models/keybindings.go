@@ -25,6 +25,11 @@ const (
 	ActionOpenGameSwitcher KeybindingAction = "switch game"
 	ActionJumpToTop        KeybindingAction = "jump to top"
 	ActionJumpToBottom     KeybindingAction = "jump to bottom"
+	ActionAddHit           KeybindingAction = "add hit"
+	ActionRemoveHit        KeybindingAction = "remove hit"
+	ActionAdvanceSplit     KeybindingAction = "advance split"
+	ActionPreviousSplit    KeybindingAction = "previous split"
+	ActionResetRun         KeybindingAction = "reset run"
 )
 
 type KeybindingSet struct {
@@ -54,6 +59,11 @@ var actionsByName = map[string]KeybindingAction{
 	string(ActionOpenGameSwitcher): ActionOpenGameSwitcher,
 	string(ActionJumpToTop):        ActionJumpToTop,
 	string(ActionJumpToBottom):     ActionJumpToBottom,
+	string(ActionAddHit):           ActionAddHit,
+	string(ActionRemoveHit):        ActionRemoveHit,
+	string(ActionAdvanceSplit):     ActionAdvanceSplit,
+	string(ActionPreviousSplit):    ActionPreviousSplit,
+	string(ActionResetRun):         ActionResetRun,
 }
 
 func init() {
@@ -200,6 +210,23 @@ func NewKeybindingManager() *KeybindingManager {
 		},
 	}
 	km.setOrder = append(km.setOrder, "fuzzy-picker")
+
+	trackerBindings := map[KeybindingAction][]string{
+		ActionAddHit:        {"+", "="},
+		ActionRemoveHit:     {"-", "_"},
+		ActionAdvanceSplit:  {"enter", " "},
+		ActionPreviousSplit: {"backspace", "u"},
+		ActionResetRun:      {"R"},
+	}
+	for name, set := range km.availableSets {
+		if name == "fuzzy-picker" {
+			continue
+		}
+		for action, keys := range trackerBindings {
+			set.Bindings[action] = slices.Clone(keys)
+		}
+		km.availableSets[name] = set
+	}
 
 	return km
 }
@@ -497,4 +524,24 @@ func MatchesJumpToBottom(msg tea.KeyMsg) bool {
 
 func MatchesHelp(msg tea.KeyMsg) bool {
 	return GlobalKeybindingManager.MatchesAction(msg, ActionHelp)
+}
+
+func MatchesAddHit(msg tea.KeyMsg) bool {
+	return GlobalKeybindingManager.MatchesAction(msg, ActionAddHit)
+}
+
+func MatchesRemoveHit(msg tea.KeyMsg) bool {
+	return GlobalKeybindingManager.MatchesAction(msg, ActionRemoveHit)
+}
+
+func MatchesAdvanceSplit(msg tea.KeyMsg) bool {
+	return GlobalKeybindingManager.MatchesAction(msg, ActionAdvanceSplit)
+}
+
+func MatchesPreviousSplit(msg tea.KeyMsg) bool {
+	return GlobalKeybindingManager.MatchesAction(msg, ActionPreviousSplit)
+}
+
+func MatchesResetRun(msg tea.KeyMsg) bool {
+	return GlobalKeybindingManager.MatchesAction(msg, ActionResetRun)
 }

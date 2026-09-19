@@ -77,7 +77,7 @@ var showRunsCmd = &cobra.Command{
 			if len(category) > maxCategory {
 				maxCategory = len(category)
 			}
-			attemptsLen := len(fmt.Sprintf("%d", run.Attempts))
+			attemptsLen := len(fmt.Sprintf("%d", run.Attempts.Int64))
 			if attemptsLen > maxAttempts {
 				maxAttempts = attemptsLen
 			}
@@ -97,7 +97,7 @@ var showRunsCmd = &cobra.Command{
 			if run.Category.Valid {
 				category = run.Category.String
 			}
-			fmt.Printf("%-*d  %-*s  %-*s  %-*s  %-*d\n", maxID, run.ID, maxName, run.Name, maxGame, game, maxCategory, category, maxAttempts, run.Attempts)
+			fmt.Printf("%-*d  %-*s  %-*s  %-*s  %-*d\n", maxID, run.ID, maxName, run.Name, maxGame, game, maxCategory, category, maxAttempts, run.Attempts.Int64)
 		}
 	},
 }
@@ -169,8 +169,8 @@ var showRunCmd = &cobra.Command{
 			fmt.Println("Category: N/A")
 		}
 
-		fmt.Printf("Attempts: %d\n", run.Attempts)
-		fmt.Printf("Active Split: %d\n", run.ActiveSplit)
+		fmt.Printf("Attempts: %d\n", run.Attempts.Int64)
+		fmt.Printf("Active Split: %d\n", run.ActiveSplit.Int64)
 		fmt.Printf("Total Splits: %d\n\n", len(splits))
 
 		if len(splits) > 0 {
@@ -274,8 +274,8 @@ var showSplitsCmd = &cobra.Command{
 		if run.Category.Valid {
 			fmt.Printf("Category: %s\n", run.Category.String)
 		}
-		fmt.Printf("Attempts: %d\n", run.Attempts)
-		fmt.Printf("Active Split: %d\n", run.ActiveSplit)
+		fmt.Printf("Attempts: %d\n", run.Attempts.Int64)
+		fmt.Printf("Active Split: %d\n", run.ActiveSplit.Int64)
 		fmt.Printf("Total Splits: %d\n\n", len(splits))
 
 		maxIdx := 3
@@ -292,8 +292,8 @@ var showSplitsCmd = &cobra.Command{
 			if len(split.Name) > maxName {
 				maxName = len(split.Name)
 			}
-			if len(fmt.Sprintf("%d", split.HitCount)) > maxHits {
-				maxHits = len(fmt.Sprintf("%d", split.HitCount))
+			if len(fmt.Sprintf("%d", split.HitCount.Int64)) > maxHits {
+				maxHits = len(fmt.Sprintf("%d", split.HitCount.Int64))
 			}
 			if len(fmt.Sprintf("%d", split.PbHitCount.Int64)) > maxPBHits {
 				maxPBHits = len(fmt.Sprintf("%d", split.PbHitCount.Int64))
@@ -396,8 +396,8 @@ var showSplitCmd = &cobra.Command{
 		if run.Category.Valid {
 			fmt.Printf("Category: %s\n", run.Category.String)
 		}
-		fmt.Printf("Attempts: %d\n", run.Attempts)
-		fmt.Printf("Active Split: %d\n", run.ActiveSplit)
+		fmt.Printf("Attempts: %d\n", run.Attempts.Int64)
+		fmt.Printf("Active Split: %d\n", run.ActiveSplit.Int64)
 		fmt.Printf("Split Index: %d\n", split.Idx)
 		fmt.Printf("Split Name: %s\n", split.Name)
 		fmt.Printf("Hits: %d\n", split.HitCount.Int64)
@@ -407,7 +407,7 @@ var showSplitCmd = &cobra.Command{
 				return "Yes"
 			}
 			return "No"
-		})
+		}())
 
 		if split.SaveFile.Valid {
 			fmt.Printf("Save File: %s\n", split.SaveFile.String)

@@ -3,10 +3,14 @@ package rendering
 import (
 	"bytes"
 	"embed"
+	"errors"
 	"fmt"
-	"html/template"
-	"io"
+	htmltemplate "html/template"
+	"io/fs"
+	"os"
 	"path/filepath"
+	"regexp"
+	texttemplate "text/template"
 
 	overlaythemes "codeberg.org/veya/ermokie/pkg/rendering/overlayThemes"
 	"codeberg.org/veya/ermokie/pkg/types"
@@ -16,9 +20,7 @@ type TemplateName string
 type TemplateCategory string
 
 const (
-	TemplateNameBase TemplateName = "base"
-)
-const (
+	TemplateNameBase     TemplateName     = "base"
 	TemplateCategoryBase TemplateCategory = "base"
 )
 
@@ -54,75 +56,163 @@ type RenderingParams struct {
 	CssFileName     string
 	CounterSettings CounterCountSettings
 	Theme           overlaythemes.OverlayTheme
+	// TemplateDir optionally points to a user template root. Custom templates
+	// live at <TemplateDir>/<category>/<name>.{html,css}.
+	TemplateDir string
 }
 
-//go:embed template/*
+//go:embed template/*/*
 var templateFS embed.FS
 
-func RenderHtml(params RenderingParams) ([]byte, []byte, error) {
-	if params.Tc != TemplateCategoryBase {
-		return nil, nil, fmt.Errorf("invalid template category: %s", params.Tc)
+var templatePartPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
+
+// RenderHTML renders a matched HTML/CSS template pair. The built-in base
+// template is always available; user templates are loaded only from
+// TemplateDir after strict path-component validation.
+func RenderHTML(params RenderingParams) ([]byte, []byte, error) {
+	category := string(params.Tc)
+	name := string(params.Tn)
+	if category == "" {
+		category = string(TemplateCategoryBase)
 	}
-	if params.Tn != TemplateNameBase {
-		return nil, nil, fmt.Errorf("invalid template name: %s", params.Tn)
+	if name == "" {
+		name = string(TemplateNameBase)
 	}
-	templ, err := template.ParseFS(templateFS, filepath.Join("template", string(params.Tc), string(params.Tn)+".html"))
+	if !templatePartPattern.MatchString(category) || !templatePartPattern.MatchString(name) {
+		return nil, nil, fmt.Errorf("invalid template %q/%q", category, name)
+	}
+
+	htmlSource, cssSource, err := loadTemplatePair(params.TemplateDir, category, name)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	data := PageData{
-		RunName: params.Run.Name,
-		Splits:  make([]SplitData, len(params.Splits)),
-		CssName: params.CssFileName,
+	page := buildPageData(params)
+	htmlTmpl, err := htmltemplate.New(name + ".html").Parse(string(htmlSource))
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse HTML template: %w", err)
+	}
+	cssTmpl, err := texttemplate.New(name+".css").Delims("@@", "@@").Parse(string(cssSource))
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse CSS template: %w", err)
 	}
 
-	activeSplit := 0
+	var htmlBuf bytes.Buffer
+	if err := htmlTmpl.Execute(&htmlBuf, page); err != nil {
+		return nil, nil, fmt.Errorf("execute HTML template: %w", err)
+	}
+	var cssBuf bytes.Buffer
+	if err := cssTmpl.Execute(&cssBuf, params.Theme.Colors); err != nil {
+		return nil, nil, fmt.Errorf("execute CSS template: %w", err)
+	}
+	return htmlBuf.Bytes(), cssBuf.Bytes(), nil
+}
+
+// RenderHtml is kept for source compatibility with older callers.
+func RenderHtml(params RenderingParams) ([]byte, []byte, error) {
+	return RenderHTML(params)
+}
+
+func loadTemplatePair(root, category, name string) ([]byte, []byte, error) {
+	htmlName := name + ".html"
+	cssName := name + ".css"
+	if root != "" {
+		dir := filepath.Join(root, category)
+		htmlBytes, htmlErr := os.ReadFile(filepath.Join(dir, htmlName))
+		cssBytes, cssErr := os.ReadFile(filepath.Join(dir, cssName))
+		switch {
+		case htmlErr == nil && cssErr == nil:
+			return htmlBytes, cssBytes, nil
+		case htmlErr == nil || cssErr == nil:
+			return nil, nil, fmt.Errorf("custom template %s/%s must include both .html and .css files", category, name)
+		case !errors.Is(htmlErr, os.ErrNotExist):
+			return nil, nil, fmt.Errorf("read custom HTML template: %w", htmlErr)
+		case !errors.Is(cssErr, os.ErrNotExist):
+			return nil, nil, fmt.Errorf("read custom CSS template: %w", cssErr)
+		}
+	}
+
+	if category != string(TemplateCategoryBase) || name != string(TemplateNameBase) {
+		return nil, nil, fmt.Errorf("template %s/%s not found", category, name)
+	}
+	htmlBytes, err := fs.ReadFile(templateFS, filepath.ToSlash(filepath.Join("template", category, htmlName)))
+	if err != nil {
+		return nil, nil, fmt.Errorf("read built-in HTML template: %w", err)
+	}
+	cssBytes, err := fs.ReadFile(templateFS, filepath.ToSlash(filepath.Join("template", category, cssName)))
+	if err != nil {
+		return nil, nil, fmt.Errorf("read built-in CSS template: %w", err)
+	}
+	return htmlBytes, cssBytes, nil
+}
+
+func buildPageData(params RenderingParams) PageData {
+	active := -1
 	for i, split := range params.Splits {
 		if split.IsActive {
-			activeSplit = i
+			active = i
 			break
 		}
 	}
 
-	data.Splits = []SplitData{}
-	for i, split := range params.Splits {
-		if params.CounterSettings.DisplayNext.IsLimited &&
-			i < activeSplit-params.CounterSettings.DisplayNext.Count {
-			continue
+	start, end := 0, len(params.Splits)
+	if active >= 0 {
+		if limit := params.CounterSettings.DisplayPrev; limit.IsLimited {
+			start = max(0, active-max(0, limit.Count))
 		}
-		if params.CounterSettings.DisplayPrev.IsLimited &&
-			i > activeSplit+params.CounterSettings.DisplayPrev.Count {
-			continue
+		if limit := params.CounterSettings.DisplayNext; limit.IsLimited {
+			end = min(len(params.Splits), active+max(0, limit.Count)+1)
 		}
-		data.Splits = append(data.Splits, SplitData{SplitName: split.Name,
-			Hits:     split.Hits,
-			PB:       split.PBHits,
-			Diff:     split.Diff,
-			IsActive: split.IsActive})
 	}
 
-	var buf bytes.Buffer
-	var bufCss bytes.Buffer
-	cssFile, err := templateFS.Open(filepath.Join("template", string(params.Tc), string(params.Tn)+".css"))
+	data := PageData{RunName: params.Run.Name, CssName: params.CssFileName}
+	data.Splits = make([]SplitData, 0, end-start)
+	for _, split := range params.Splits[start:end] {
+		data.Splits = append(data.Splits, SplitData{
+			SplitName: split.Name,
+			Hits:      split.Hits,
+			PB:        split.PBHits,
+			Diff:      split.Diff,
+			IsActive:  split.IsActive,
+		})
+	}
+	return data
+}
+
+// WriteOutput safely replaces the generated overlay files.
+func WriteOutput(dir string, htmlBytes, cssBytes []byte) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create render directory: %w", err)
+	}
+	if err := writeAtomic(filepath.Join(dir, "output.html"), htmlBytes); err != nil {
+		return err
+	}
+	if err := writeAtomic(filepath.Join(dir, "output.css"), cssBytes); err != nil {
+		return err
+	}
+	return nil
+}
+
+func writeAtomic(path string, data []byte) error {
+	file, err := os.CreateTemp(filepath.Dir(path), ".ermokie-render-*")
 	if err != nil {
-		return nil, nil, err
+		return fmt.Errorf("create temporary render file: %w", err)
 	}
-	defer cssFile.Close()
-	cssContent, getCssContentErr := io.ReadAll(cssFile)
-	if getCssContentErr != nil {
-		return nil, nil, getCssContentErr
+	tmp := file.Name()
+	defer os.Remove(tmp)
+	if err := file.Chmod(0o644); err != nil {
+		file.Close()
+		return fmt.Errorf("set render permissions: %w", err)
 	}
-	cssTempl, createCssTmplErr := template.New("css").Delims("@@", "@@").Parse(string(cssContent))
-	if createCssTmplErr != nil {
-		return nil, nil, createCssTmplErr
+	if _, err := file.Write(data); err != nil {
+		file.Close()
+		return fmt.Errorf("write temporary render file: %w", err)
 	}
-	err = cssTempl.Execute(&bufCss, params.Theme.Colors)
-	if err != nil {
-		return nil, nil, err
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close temporary render file: %w", err)
 	}
-
-	err = templ.Execute(&buf, data)
-
-	return buf.Bytes(), bufCss.Bytes(), nil
+	if err := os.Rename(tmp, path); err != nil {
+		return fmt.Errorf("replace %s: %w", filepath.Base(path), err)
+	}
+	return nil
 }

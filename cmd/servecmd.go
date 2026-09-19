@@ -1,8 +1,9 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
-	"os"
+	"net/http"
 	"path/filepath"
 
 	"codeberg.org/veya/ermokie/pkg/config"
@@ -12,34 +13,40 @@ import (
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "Serve the overlay",
-	Long:  `Serve the overlay`,
-	Run: func(cmd *cobra.Command, args []string) {
-		var port int
+	Short: "Serve the browser overlay",
+	Long:  "Serve the generated overlay on localhost for an OBS browser source.",
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		cfg, err := config.LoadConfig()
 		if err != nil {
-			fmt.Printf("Error loading config: %v\n", err)
-			os.Exit(1)
-		}
-		portFlag, getPortErr := cmd.Flags().GetInt("port")
-		if getPortErr != nil {
-			fmt.Printf("Error getting port: %v\n", getPortErr)
-			os.Exit(1)
-			port = cfg.Overlay.Port
-		} else {
-			port = portFlag
+			return fmt.Errorf("load config: %w", err)
 		}
 
-		dir := filepath.Join(cfg.General.DataDir, "render")
-		o := rendering.NewOverlayServer(port, dir)
-		o.Serve()
+		port, err := cmd.Flags().GetInt("port")
+		if err != nil {
+			return fmt.Errorf("read port: %w", err)
+		}
+		if port == 0 {
+			port = cfg.Overlay.Port
+		}
+		dir, err := cmd.Flags().GetString("dir")
+		if err != nil {
+			return fmt.Errorf("read render directory: %w", err)
+		}
+		if dir == "" {
+			dir = filepath.Join(cfg.General.DataDir, "render")
+		}
+
+		cmd.Printf("Overlay: http://127.0.0.1:%d/overlay\n", port)
+		server := rendering.NewOverlayServer(port, dir)
+		if err := server.Serve(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("serve overlay: %w", err)
+		}
+		return nil
 	},
 }
 
-// add cmd that auto renders the active run on update
-
 func init() {
-	serveCmd.Flags().IntP("port", "p", 6767, "Port to serve the overlay on")
-	serveCmd.Flags().StringP("dir", "d", "", "Directory to serve the overlay from")
+	serveCmd.Flags().IntP("port", "p", 0, "Port to serve the overlay on (defaults to config)")
+	serveCmd.Flags().StringP("dir", "d", "", "Directory containing output.html and output.css")
 	rootCmd.AddCommand(serveCmd)
 }

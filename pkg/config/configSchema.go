@@ -15,7 +15,7 @@ type Config struct {
 type GeneralSettings struct {
 	ClearOnRename      bool   `toml:"clear_on_rename"`
 	DataDir            string `toml:"data_dir"`
-	ShowAttemptCounter bool   `toml:"disable_attempt_counter"`
+	ShowAttemptCounter bool   `toml:"show_attempt_counter"`
 	ShowDiff           bool   `toml:"show_hit_diff"`
 }
 
@@ -25,7 +25,8 @@ type ThemeConfig struct {
 }
 
 type Binds struct {
-	Keymap string `toml:"keymap"`
+	Keymap string              `toml:"keymap"`
+	Custom map[string][]string `toml:"custom"`
 }
 
 type AppThemeConfig struct {
@@ -41,6 +42,8 @@ type OverlayThemeConfig struct {
 type OverlayConfig struct {
 	Port              int                `toml:"port"`
 	Theme             OverlayThemeConfig `toml:"theme"`
+	TemplateCategory  string             `toml:"template_category"`
+	TemplateName      string             `toml:"template_name"`
 	ShowSplitsAbove   int                `toml:"show_splits_above"`
 	LimitSplitsAbove  bool               `toml:"limit_splits_above"`
 	ShowSplitsBellow  int                `toml:"show_splits_bellow"`
@@ -49,7 +52,7 @@ type OverlayConfig struct {
 
 func NewConfig() Config {
 	var c Config
-	dataDir, err := GetDataDirWithFallback("ermokie")
+	dataDir, err := EnsureUserDataDir("ermokie")
 	if err != nil {
 		log.Fatalf("Failed to create or get the dir to store the data of the app, %v", err)
 	}
@@ -59,6 +62,8 @@ func NewConfig() Config {
 
 	c.Theme.App.Name = "default"
 	c.Overlay.Theme.Name = "default"
+	c.Overlay.TemplateCategory = "base"
+	c.Overlay.TemplateName = "base"
 	c.KeyBinds.Keymap = "arrow-vim"
 	c.General.ShowAttemptCounter = true
 	c.General.ShowDiff = false

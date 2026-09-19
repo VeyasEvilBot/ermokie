@@ -77,8 +77,6 @@ type initDataMsg struct {
 	err       error
 }
 
-var QuitKeys = GetQuitKeys()
-
 func clipCells(s string, w int) string {
 	if w <= 0 {
 		return ""

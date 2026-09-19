@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -36,6 +37,23 @@ type KeybindingManager struct {
 	availableSets map[string]KeybindingSet
 	setOrder      []string
 	currentSet    string
+}
+
+var actionsByName = map[string]KeybindingAction{
+	string(ActionUp):               ActionUp,
+	string(ActionDown):             ActionDown,
+	string(ActionLeft):             ActionLeft,
+	string(ActionRight):            ActionRight,
+	string(ActionSelect):           ActionSelect,
+	string(ActionCancel):           ActionCancel,
+	string(ActionConfirm):          ActionConfirm,
+	string(ActionQuit):             ActionQuit,
+	string(ActionHelp):             ActionHelp,
+	string(ActionYes):              ActionYes,
+	string(ActionNo):               ActionNo,
+	string(ActionOpenGameSwitcher): ActionOpenGameSwitcher,
+	string(ActionJumpToTop):        ActionJumpToTop,
+	string(ActionJumpToBottom):     ActionJumpToBottom,
 }
 
 func init() {
@@ -187,9 +205,36 @@ func NewKeybindingManager() *KeybindingManager {
 }
 
 func (km *KeybindingManager) GetAvailableKeybindingSets() []string {
-	out := make([]string, len(km.availableSets))
-	copy(out, km.setOrder)
-	return out
+	return slices.Clone(km.setOrder)
+}
+
+// ApplyOverrides replaces selected bindings in the active keymap. Action
+// names are the stable strings used in config.toml (for example "up" and
+// "switch game"). Invalid or empty overrides are rejected as a unit.
+func (km *KeybindingManager) ApplyOverrides(overrides map[string][]string) error {
+	for name, keys := range overrides {
+		if _, ok := actionsByName[name]; !ok {
+			return fmt.Errorf("unknown keybinding action %q", name)
+		}
+		if len(keys) == 0 {
+			return fmt.Errorf("keybinding action %q has no keys", name)
+		}
+		for _, value := range keys {
+			if value == "" {
+				return fmt.Errorf("keybinding action %q contains an empty key", name)
+			}
+		}
+	}
+
+	set, ok := km.availableSets[km.currentSet]
+	if !ok {
+		return fmt.Errorf("unknown active keymap %q", km.currentSet)
+	}
+	for name, keys := range overrides {
+		set.Bindings[actionsByName[name]] = slices.Clone(keys)
+	}
+	km.availableSets[km.currentSet] = set
+	return nil
 }
 
 func (km *KeybindingManager) SetKeybindingOrder(order []string) {
@@ -398,40 +443,28 @@ func MatchesYes(msg tea.KeyMsg) bool {
 func MatchesNo(msg tea.KeyMsg) bool {
 	return GlobalKeybindingManager.MatchesAction(msg, ActionNo)
 }
-func GetFuzzyUpKeys() []string {
-	if set, exists := GlobalKeybindingManager.availableSets["fuzzy-picker"]; exists {
-		if keys, actionExists := set.Bindings[ActionUp]; actionExists {
-			return keys
-		}
+func getFuzzyKeys(action KeybindingAction, fallback string) []string {
+	keys := GlobalKeybindingManager.GetKeysForAction(action)
+	if len(keys) > 0 {
+		return keys
 	}
-	return []string{"up"}
+	return []string{fallback}
+}
+
+func GetFuzzyUpKeys() []string {
+	return getFuzzyKeys(ActionUp, "up")
 }
 
 func GetFuzzyDownKeys() []string {
-	if set, exists := GlobalKeybindingManager.availableSets["fuzzy-picker"]; exists {
-		if keys, actionExists := set.Bindings[ActionDown]; actionExists {
-			return keys
-		}
-	}
-	return []string{"down"}
+	return getFuzzyKeys(ActionDown, "down")
 }
 
 func GetFuzzyLeftKeys() []string {
-	if set, exists := GlobalKeybindingManager.availableSets["fuzzy-picker"]; exists {
-		if keys, actionExists := set.Bindings[ActionLeft]; actionExists {
-			return keys
-		}
-	}
-	return []string{"left"}
+	return getFuzzyKeys(ActionLeft, "left")
 }
 
 func GetFuzzyRightKeys() []string {
-	if set, exists := GlobalKeybindingManager.availableSets["fuzzy-picker"]; exists {
-		if keys, actionExists := set.Bindings[ActionRight]; actionExists {
-			return keys
-		}
-	}
-	return []string{"right"}
+	return getFuzzyKeys(ActionRight, "right")
 }
 
 func MatchesFuzzyUp(msg tea.KeyMsg) bool {

@@ -32,6 +32,7 @@ func LoadConfig() (Config, error) {
 	if getConfErr != nil {
 		return cfg, getConfErr
 	}
+	SetDataDir(cfg.General.DataDir)
 
 	return cfg, nil
 }
@@ -72,7 +73,7 @@ func GetConfigPath() (string, error) {
 }
 
 func readConfigFile(path string) (Config, error) {
-	var cfg Config
+	cfg := NewConfig()
 	f, err := os.ReadFile(path)
 	if err != nil {
 		return cfg, fmt.Errorf("could not open config file: %w", err)

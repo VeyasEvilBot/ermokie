@@ -1,6 +1,6 @@
 module codeberg.org/veya/ermokie
 
-go 1.24.6
+go 1.27.0
 
 require (
 	github.com/Microsoft/go-winio v0.6.2
@@ -9,7 +9,6 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/ansi v0.9.3
 	github.com/fatih/color v1.18.0
-	github.com/fsnotify/fsnotify v1.9.0
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/muesli/reflow v0.3.0
 	github.com/muesli/termenv v0.16.0

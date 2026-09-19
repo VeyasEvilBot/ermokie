@@ -28,19 +28,8 @@ var renderRunCmd = &cobra.Command{
 	Long:  `Render a run as a HTML page.`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		// rawFlag, _ := cmd.Flags().GetBool("raw")
-		var templateCat rendering.TemplateCategory
-		var templateName rendering.TemplateName
-		templateCatFlag, getTemplateCatErr := cmd.Flags().GetString("template-cat")
-		if getTemplateCatErr != nil {
-			templateCat = rendering.TemplateCategoryBase
-		}
-		templateNameFlag, getTemplateNameErr := cmd.Flags().GetString("template-name")
-		if getTemplateNameErr != nil {
-			templateName = rendering.TemplateNameBase
-		}
-		templateCat = rendering.TemplateCategory(templateCatFlag)
-		templateName = rendering.TemplateName(templateNameFlag)
+		templateCatFlag, _ := cmd.Flags().GetString("template-cat")
+		templateNameFlag, _ := cmd.Flags().GetString("template-name")
 		runArg := args[0]
 		store, getDbErr := db.Init()
 		ctx := context.Background()
@@ -90,6 +79,14 @@ var renderRunCmd = &cobra.Command{
 			fmt.Printf("Error loading config: %v\n", getCfgErr)
 			os.Exit(1)
 		}
+		if !cmd.Flags().Changed("template-cat") {
+			templateCatFlag = cfg.Overlay.TemplateCategory
+		}
+		if !cmd.Flags().Changed("template-name") {
+			templateNameFlag = cfg.Overlay.TemplateName
+		}
+		templateCat := rendering.TemplateCategory(templateCatFlag)
+		templateName := rendering.TemplateName(templateNameFlag)
 
 		overlaythemes := overlaythemes.NewOverlayThemes()
 		theme := overlaythemes.GetThemeByName(cfg.Overlay.Theme.Name)
@@ -105,30 +102,17 @@ var renderRunCmd = &cobra.Command{
 		params.CounterSettings.DisplayPrev.IsLimited = cfg.Overlay.LimitSplitsBellow
 		params.CounterSettings.DisplayPrev.Count = cfg.Overlay.ShowSplitsBellow
 		params.Theme = theme
-		htmlBytes, cssBytes, err := rendering.RenderHtml(params)
+		params.TemplateDir = filepath.Join(cfg.General.DataDir, "templates")
+		htmlBytes, cssBytes, err := rendering.RenderHTML(params)
 		if err != nil {
 			fmt.Printf("Error rendering HTML: %v\n", err)
 			os.Exit(1)
 		}
 		outDir := filepath.Join(cfg.General.DataDir, "render")
-		if err := os.MkdirAll(outDir, 0o755); err != nil {
-			fmt.Printf("Error creating output directory: %v\n", err)
+		if err := rendering.WriteOutput(outDir, htmlBytes, cssBytes); err != nil {
+			fmt.Printf("Error writing render output: %v\n", err)
 			os.Exit(1)
 		}
-		fHtml, createHtmlErr := os.Create(filepath.Join(outDir, "output.html"))
-		if createHtmlErr != nil {
-			fmt.Printf("Error creating file: %v\n", createHtmlErr)
-			os.Exit(1)
-		}
-		fCss, createCssErr := os.Create(filepath.Join(outDir, "output.css"))
-		if createCssErr != nil {
-			fmt.Printf("Error creating file: %v\n", createCssErr)
-			os.Exit(1)
-		}
-		defer fHtml.Close()
-		defer fCss.Close()
-		fHtml.Write(htmlBytes)
-		fCss.Write(cssBytes)
 	},
 }
 

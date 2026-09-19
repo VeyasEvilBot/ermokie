@@ -50,7 +50,7 @@ func newFuzzyFinderWithThemeAndFlag(data []string, multiMode bool, themeStyles s
 	f := &fuzzyFinder{
 		title:          title,
 		viewport:       vp,
-		rows:           data,
+		rows:           deduplicate(data),
 		cursor:         0,
 		input:          ti,
 		termW:          0,
@@ -132,6 +132,33 @@ func (f *fuzzyFinder) Init() tea.Cmd {
 	return textinput.Blink
 }
 
+func (f *fuzzyFinder) visibleRows() []string {
+	if f.liveValue == "" {
+		return f.rows
+	}
+	return getMatches(fuzzy.Find(f.liveValue, f.rows))
+}
+
+func (f *fuzzyFinder) currentChoice() (string, bool) {
+	rows := f.visibleRows()
+	if f.cursor < 0 || f.cursor >= len(rows) {
+		return "", false
+	}
+	return rows[f.cursor], true
+}
+
+func (f *fuzzyFinder) toggleCurrent() {
+	choice, ok := f.currentChoice()
+	if !ok {
+		return
+	}
+	if slices.Contains(f.selection, choice) {
+		f.selection = slices.DeleteFunc(f.selection, func(value string) bool { return value == choice })
+		return
+	}
+	f.selection = append(f.selection, choice)
+}
+
 func (f *fuzzyFinder) SetStyles(themeStyles styles.Styles) {
 	f.styles = themeStyles
 	f.viewport.Style = lipgloss.NewStyle().
@@ -140,21 +167,27 @@ func (f *fuzzyFinder) SetStyles(themeStyles styles.Styles) {
 }
 
 func (f *fuzzyFinder) helpView() string {
+	up := GlobalKeybindingManager.GetKeysForAction(ActionUp)[0]
+	down := GlobalKeybindingManager.GetKeysForAction(ActionDown)[0]
+	confirm := GlobalKeybindingManager.GetKeysForAction(ActionConfirm)[0]
+	cancel := GlobalKeybindingManager.GetKeysForAction(ActionCancel)[0]
 	if f.multiMode {
-		return f.styles.Hint.Render("  ↑/↓: Navigate • <tab>: Toggle selection • <enter>: Confirm & quit • Control c/<esc>: Quit\n")
+		selectKey := GlobalKeybindingManager.GetKeysForAction(ActionSelect)[0]
+		return f.styles.Hint.Render(fmt.Sprintf("  %s/%s: Navigate • %s: Toggle • %s: Confirm • %s: Cancel\n", up, down, selectKey, confirm, cancel))
 	}
-	return f.styles.Hint.Render("  ↑/↓: Navigate • <enter>: Select & quit • Control c/<esc>: Quit\n")
+	return f.styles.Hint.Render(fmt.Sprintf("  %s/%s: Navigate • %s: Select • %s: Cancel\n", up, down, confirm, cancel))
 }
 
 func (f *fuzzyFinder) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		f.termW = msg.Width
-		f.termH = msg.Height
-		f.boxW = int(float64(msg.Width) * 0.5)
+		f.termW = max(msg.Width, 1)
+		f.termH = max(msg.Height, 1)
+		f.boxW = max(int(float64(msg.Width)*0.5), 24)
 		promptCells := lipgloss.Width(f.input.Prompt)
-		f.input.Width = max(f.boxW-promptCells-3, 0)
+		f.input.Width = max(f.boxW-promptCells-3, 1)
 		f.viewport.Width = f.boxW
+		f.viewport.Height = max(min(20, msg.Height-8), 3)
 		f.viewport.Style = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderForeground(f.styles.Colors.Accent)
@@ -167,102 +200,60 @@ func (f *fuzzyFinder) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "esc":
-			return f, func() tea.Msg { return cancelPickerMsg{} }
-
-		case "up":
-			var maxIdx int
-			if f.liveValue == "" {
-				maxIdx = len(f.rows) - 1
-			} else {
-				matches := fuzzy.Find(f.liveValue, f.rows)
-				results := getMatches(matches)
-				maxIdx = len(results) - 1
+		if MatchesCancel(msg) || msg.String() == "ctrl+c" {
+			if f.fromMainScreen {
+				return f, func() tea.Msg { return cancelPickerMsg{} }
 			}
-			if maxIdx >= 0 && f.cursor > 0 {
+			return f, tea.Quit
+		}
+
+		if MatchesFuzzyUp(msg) {
+			if f.cursor > 0 {
 				f.cursor--
 			}
 			f.refreshContent()
 			return f, nil
+		}
 
-		case "down":
-			var maxIdx int
-			if f.liveValue == "" {
-				maxIdx = len(f.rows) - 1
-			} else {
-				matches := fuzzy.Find(f.liveValue, f.rows)
-				results := getMatches(matches)
-				maxIdx = len(results) - 1
-			}
+		if MatchesFuzzyDown(msg) {
+			maxIdx := len(f.visibleRows()) - 1
 			if maxIdx >= 0 && f.cursor < maxIdx {
 				f.cursor++
 			}
 			f.refreshContent()
 			return f, nil
+		}
 
-		case "enter":
-			var choice string
-			if f.liveValue == "" {
-				if len(f.rows) > 0 && f.cursor >= 0 && f.cursor < len(f.rows) {
-					choice = f.rows[f.cursor]
-				}
-			} else {
-				matches := fuzzy.Find(f.liveValue, f.rows)
-				results := getMatches(matches)
-				if len(results) > 0 && f.cursor >= 0 && f.cursor < len(results) {
-					choice = results[f.cursor]
-				}
+		if MatchesConfirm(msg) {
+			choice, ok := f.currentChoice()
+			if !ok && (!f.multiMode || len(f.selection) == 0) {
+				return f, nil
 			}
-
 			if f.multiMode {
-				if choice != "" && !slices.Contains(f.selection, choice) {
+				if ok && !slices.Contains(f.selection, choice) {
 					f.selection = append(f.selection, choice)
 				}
-				return f, func() tea.Msg { return selectionMsg(f.selection) }
-			} else {
-				if choice != "" {
-					f.selection = []string{choice}
-				}
-				return f, func() tea.Msg { return selectionMsg(f.selection) }
+				return f, func() tea.Msg { return selectionMsg(slices.Clone(f.selection)) }
 			}
-
-		case "tab":
-			if f.multiMode {
-				var choice string
-				if f.liveValue == "" {
-					if len(f.rows) > 0 && f.cursor >= 0 && f.cursor < len(f.rows) {
-						choice = f.rows[f.cursor]
-					}
-				} else {
-					matches := fuzzy.Find(f.liveValue, f.rows)
-					results := getMatches(matches)
-					if len(results) > 0 && f.cursor >= 0 && f.cursor < len(results) {
-						choice = results[f.cursor]
-					}
-				}
-
-				if choice != "" {
-					if slices.Contains(f.selection, choice) {
-						f.selection = slices.DeleteFunc(f.selection, func(s string) bool {
-							return s == choice
-						})
-					} else {
-						f.selection = append(f.selection, choice)
-					}
-				}
-				f.refreshContent()
-			}
-			return f, nil
-
-		default:
-			var cmd tea.Cmd
-			f.input, cmd = f.input.Update(msg)
-			f.liveValue = f.input.Value()
-			f.cursor = 0
-			f.refreshContent()
-			return f, cmd
+			f.selection = []string{choice}
+			return f, func() tea.Msg { return selectionMsg(slices.Clone(f.selection)) }
 		}
+
+		if f.multiMode && MatchesSelect(msg) {
+			f.toggleCurrent()
+			f.refreshContent()
+			return f, nil
+		}
+
+		previous := f.input.Value()
+		var cmd tea.Cmd
+		f.input, cmd = f.input.Update(msg)
+		f.liveValue = f.input.Value()
+		if f.liveValue != previous {
+			f.cursor = 0
+		}
+		f.refreshContent()
+		return f, cmd
 	}
 
 	return f, nil

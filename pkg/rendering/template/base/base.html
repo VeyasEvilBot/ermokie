@@ -33,16 +33,9 @@
     </table>
 </body>
 <script>
-    function onUpdate() {
-        fetch(window.location.href)
-            .then(res => res.text())
-            .then(html => {
-                document.documentElement.innerHTML = html;
-            })
-            .catch(err => console.error('Update failed:', err));
-    }
-
-    setInterval(onUpdate, 1000);
+    // OBS Browser Source keeps this page open; reload to pick up an atomic
+    // render update without mutating the document and losing event handlers.
+    window.setTimeout(() => window.location.reload(), 1000);
 </script>
 
 </html>
